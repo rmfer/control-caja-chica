@@ -25,7 +25,9 @@ st.markdown("Visualización de saldos y movimientos por cuatrimestre.")
 # ---------------------------
 # Autenticación con Google
 # ---------------------------
-sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"credentials = Credentials.from_service_account_info(
+sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
+
+credentials = Credentials.from_service_account_info(
     st.secrets["gcp_service_account"],
     scopes=["https://www.googleapis.com/auth/spreadsheets"]
 )
