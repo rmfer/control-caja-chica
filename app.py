@@ -1,78 +1,110 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 import gspread
-from google.oauth2.service_account import Credentials
+from oauth2client.service_account import ServiceAccountCredentials
 from fpdf import FPDF
 from io import BytesIO
-from PIL import Image
 
-# ---------------------------
-# Configuración de página
-# ---------------------------
-st.set_page_config(
-    page_title="Control de Caja Chica",
-    layout="centered",
-    page_icon="💰"
-)
-
-# ---------------------------
-# Cargar imagen del logo
-# ---------------------------
-st.image("logo.png", width=150)
-st.title("Control de Caja Chica")
-st.markdown("Visualización de saldos y movimientos por cuatrimestre.")
-
-# ---------------------------
-# Autenticación con Google
-# ---------------------------
-sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
-
-credentials = Credentials.from_service_account_info(
-    st.secrets["gcp_service_account"],
-    scopes=["https://www.googleapis.com/auth/spreadsheets"]
+# --- Autenticación con Google Sheets ---
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(
+    st.secrets["google_service_account"], scope
 )
 client = gspread.authorize(credentials)
-sheet = client.open_by_key(sheet_id)
 
-# ---------------------------
-# Función para leer datos
-# ---------------------------
-@st.cache_data
-def cargar_datos(nombre_hoja):
-    hoja = sheet.worksheet(nombre_hoja)
-    datos = hoja.get_all_records()
-    df = pd.DataFrame(datos)
-    columnas = df.columns.str.strip()
-    df.columns = columnas
-    return df
+sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 
-# ---------------------------
-# Mostrar datos por tipo de caja
-# ---------------------------
-opciones = ["Resumen Repuestos", "Resumen Petróleo"]
-seleccion = st.selectbox("Seleccioná una caja:", opciones)
+# --- Cargar hojas ---
+mov_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Repuestos").get_all_records())
+res_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Repuestos").get_all_records())
+mov_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Petróleo").get_all_records())
+res_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Petróleo").get_all_records())
 
-df = cargar_datos(seleccion)
+# --- Unificar datos ---
+mov_repuestos["Caja"] = "Repuestos"
+mov_petroleo["Caja"] = "Petróleo"
+df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 
-if not df.empty:
-    st.dataframe(df)
+res_repuestos["Caja"] = "Repuestos"
+res_petroleo["Caja"] = "Petróleo"
+df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
-    # Mostrar métricas clave
-    for index, row in df.iterrows():
-        cuatrimestre = row["Cuatrimestre"]
-        monto = float(row["Monto"])
-        gastado = float(row["Total Gastado"])
-        saldo = float(row["Saldo Actual"])
+# --- Interfaz ---
+st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
+st.title("Control de Cajas Chicas 2025")
 
-        porcentaje_usado = (gastado / monto) * 100 if monto > 0 else 0
-        porcentaje_restante = 100 - porcentaje_usado
+# Filtros
+st.sidebar.header("Filtros")
+cajas = st.sidebar.multiselect("Caja", df_mov["Caja"].unique(), default=df_mov["Caja"].unique())
+cuatrimestres = st.sidebar.multiselect("Cuatrimestre", df_mov["Cuatrimestre"].unique(), default=df_mov["Cuatrimestre"].unique())
+proveedores = st.sidebar.multiselect("Proveedor", df_mov["Proveedor"].unique(), default=df_mov["Proveedor"].unique())
 
-        with st.expander(f"📌 {cuatrimestre}"):
-            st.metric("Monto asignado", f"${monto:,.2f}")
-            st.metric("Total gastado", f"${gastado:,.2f}")
-            st.metric("Saldo restante", f"${saldo:,.2f}")
-            st.progress(porcentaje_usado / 100, text=f"{porcentaje_usado:.1f}% utilizado")
+# Aplicar filtros
+df_filtrado = df_mov[
+    (df_mov["Caja"].isin(cajas)) &
+    (df_mov["Cuatrimestre"].isin(cuatrimestres)) &
+    (df_mov["Proveedor"].isin(proveedores))
+]
 
-else:
-    st.warning("No hay datos disponibles.")
+st.header("Resumen General")
 
+for caja in cajas:
+    st.subheader(f"Caja: {caja}")
+    resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
+
+    if not resumen.empty:
+        disponible = resumen["Monto"].sum()
+        gastado = resumen["Total Gastado"].sum()
+        saldo = resumen["Saldo Actual"].sum()
+        pct_usado = (gastado / disponible) * 100 if disponible > 0 else 0
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Disponible", f"${disponible:,.2f}")
+        col2.metric("Gastado", f"${gastado:,.2f}")
+        col3.metric("Saldo", f"${saldo:,.2f}")
+
+        # Gráfico de barras
+        fig, ax = plt.subplots()
+        ax.bar(["Gastado", "Saldo"], [gastado, saldo], color=["#ff4b4b", "#4bffa8"])
+        ax.set_title(f"Distribución: {caja}")
+        st.pyplot(fig)
+
+# --- Gastos por proveedor ---
+st.header("Gasto por Proveedor")
+gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
+st.bar_chart(gastos_proveedor)
+
+# --- Tabla de movimientos ---
+st.header("Movimientos filtrados")
+st.dataframe(df_filtrado)
+
+# --- Exportar a PDF ---
+def exportar_pdf():
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Resumen de Control de Cajas Chicas", ln=1, align="C")
+
+    for caja in cajas:
+        resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
+        if not resumen.empty:
+            disponible = resumen["Monto"].sum()
+            gastado = resumen["Total Gastado"].sum()
+            saldo = resumen["Saldo Actual"].sum()
+            pct_usado = (gastado / disponible) * 100 if disponible > 0 else 0
+
+            pdf.ln(10)
+            pdf.cell(200, 10, txt=f"Caja: {caja}", ln=1)
+            pdf.cell(200, 10, txt=f"Monto disponible: ${disponible:,.2f}", ln=1)
+            pdf.cell(200, 10, txt=f"Total gastado: ${gastado:,.2f}", ln=1)
+            pdf.cell(200, 10, txt=f"Saldo restante: ${saldo:,.2f}", ln=1)
+            pdf.cell(200, 10, txt=f"Porcentaje usado: {pct_usado:.2f}%", ln=1)
+
+    buffer = BytesIO()
+    pdf.output(buffer)
+    return buffer
+
+if st.button("📄 Descargar resumen en PDF"):
+    pdf_bytes = exportar_pdf()
+    st.download_button("Descargar PDF", data=pdf_bytes.getvalue(), file_name="resumen_cajas.pdf", mime="application/pdf")
