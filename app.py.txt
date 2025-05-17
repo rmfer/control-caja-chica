@@ -1,0 +1,91 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+from io import BytesIO
+from fpdf import FPDF
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Control de Cajas Chicas", layout="wide")
+st.title("📊 Control de Cajas Chicas - Repuestos y Petróleo")
+
+# --- AUTENTICACIÓN CON GOOGLE SHEETS ---
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/spreadsheets",
+         "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+client = gspread.authorize(creds)
+sheet = client.open("iacajas2025")
+
+# --- CARGA DE DATOS ---
+def load_data():
+    df_mov_repuestos = pd.DataFrame(sheet.worksheet("Movimientos Repuestos").get_all_records())
+    df_res_repuestos = pd.DataFrame(sheet.worksheet("Resumen Repuestos").get_all_records())
+    df_mov_petroleo = pd.DataFrame(sheet.worksheet("Movimientos Petróleo").get_all_records())
+    df_res_petroleo = pd.DataFrame(sheet.worksheet("Resumen Petróleo").get_all_records())
+    return df_mov_repuestos, df_res_repuestos, df_mov_petroleo, df_res_petroleo
+
+# --- FUNCIONES AUXILIARES ---
+def calcular_metricas(resumen, caja):
+    resumen["% Consumido"] = (resumen["Total Gastado"] / resumen["Monto"] * 100).round(2)
+    resumen["% Disponible"] = (resumen["Saldo Actual"] / resumen["Monto"] * 100).round(2)
+    st.subheader(f"Resumen {caja}")
+    st.dataframe(resumen)
+
+    st.metric(label="Total Gastado", value=f"${resumen['Total Gastado'].sum():,.2f}")
+    st.metric(label="Saldo Restante", value=f"${resumen['Saldo Actual'].sum():,.2f}")
+
+    fig, ax = plt.subplots(figsize=(5, 3))
+    resumen.set_index("Cuatrimestre")["% Consumido"].plot(kind="bar", color="orange", ax=ax)
+    plt.title(f"% Consumo por Cuatrimestre - {caja}")
+    st.pyplot(fig)
+
+def export_pdf(df, resumen, caja):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=f"Resumen Caja {caja}", ln=True, align="C")
+
+    for i, row in resumen.iterrows():
+        pdf.cell(200, 10, txt=f"{row['Cuatrimestre']}: Gastado ${row['Total Gastado']:.2f}, Saldo ${row['Saldo Actual']:.2f}", ln=True)
+
+    pdf.ln(10)
+    pdf.set_font("Arial", size=10)
+    for i, row in df.iterrows():
+        pdf.cell(200, 8, txt=f"{row['Fecha']} - {row['Proveedor']} - ${row['Monto']:.2f}", ln=True)
+
+    pdf_output = BytesIO()
+    pdf.output(pdf_output)
+    st.download_button("📄 Descargar PDF", data=pdf_output.getvalue(), file_name=f"Resumen_{caja}.pdf")
+
+# --- INTERFAZ ---
+df_mov_rep, df_res_rep, df_mov_pet, df_res_pet = load_data()
+
+caja = st.selectbox("Seleccionar Caja:", ["Repuestos", "Petróleo"])
+
+if caja == "Repuestos":
+    df_mov = df_mov_rep
+    df_res = df_res_rep
+else:
+    df_mov = df_mov_pet
+    df_res = df_res_pet
+
+cuatrimestres = df_res["Cuatrimestre"].unique()
+proveedores = df_mov["Proveedor"].unique()
+
+col1, col2 = st.columns(2)
+with col1:
+    filtro_cuatri = st.multiselect("Filtrar por Cuatrimestre:", cuatrimestres, default=cuatrimestres)
+with col2:
+    filtro_prov = st.multiselect("Filtrar por Proveedor:", proveedores, default=proveedores)
+
+# --- APLICAR FILTROS ---
+df_filtrado = df_mov[(df_mov["Cuatrimestre"].isin(filtro_cuatri)) & (df_mov["Proveedor"].isin(filtro_prov))]
+st.subheader("Movimientos Filtrados")
+st.dataframe(df_filtrado)
+
+# --- CÁLCULO Y VISUALIZACIÓN ---
+calcular_metricas(df_res[df_res["Cuatrimestre"].isin(filtro_cuatri)], caja)
+
+# --- EXPORTAR PDF ---
+export_pdf(df_filtrado, df_res[df_res["Cuatrimestre"].isin(filtro_cuatri)], caja)
