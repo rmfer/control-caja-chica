@@ -134,15 +134,45 @@ st.title("Control de Cajas Chicas 2025")
 
 # Filtros
 st.sidebar.header("Filtros")
-cajas = st.sidebar.multiselect("Caja", sorted(df_mov["Caja"].unique()), default=sorted(df_mov["Caja"].unique()))
-cuatrimestres = st.sidebar.multiselect("Cuatrimestre", sorted(df_mov["Cuatrimestre"].dropna().unique()), default=sorted(df_mov["Cuatrimestre"].dropna().unique()))
-proveedores = st.sidebar.multiselect("Proveedor", sorted(df_mov["Proveedor"].dropna().unique()), default=sorted(df_mov["Proveedor"].dropna().unique()))
+
+# Selección de cajas
+cajas = st.sidebar.multiselect(
+    "Caja",
+    options=sorted(df_mov["Caja"].unique()),
+    default=sorted(df_mov["Caja"].unique())
+)
+
+# Filtrar proveedores según cajas seleccionadas
+proveedores_repuestos = mov_repuestos["Proveedor"].dropna().unique().tolist()
+proveedores_petroleo = mov_petroleo["Proveedor"].dropna().unique().tolist()
+
+proveedores_filtrados = []
+if "Repuestos" in cajas:
+    proveedores_filtrados.extend(proveedores_repuestos)
+if "Petróleo" in cajas:
+    proveedores_filtrados.extend(proveedores_petroleo)
+
+proveedores_filtrados = sorted(set(proveedores_filtrados))
+
+# Selección dinámica de proveedores
+proveedor_seleccionado = st.sidebar.multiselect(
+    "Proveedor",
+    options=proveedores_filtrados,
+    default=proveedores_filtrados
+)
+
+# Selección de cuatrimestres
+cuatrimestres = st.sidebar.multiselect(
+    "Cuatrimestre",
+    options=sorted(df_mov["Cuatrimestre"].dropna().unique()),
+    default=sorted(df_mov["Cuatrimestre"].dropna().unique())
+)
 
 # Aplicar filtros
 df_filtrado = df_mov[
     (df_mov["Caja"].isin(cajas)) &
-    (df_mov["Cuatrimestre"].isin(cuatrimestres)) &
-    (df_mov["Proveedor"].isin(proveedores))
+    (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
+    (df_mov["Cuatrimestre"].isin(cuatrimestres))
 ]
 
 st.header("Resumen General")
