@@ -64,6 +64,7 @@ mov_petroleo = cargar_hoja("Movimientos Petróleo")
 res_repuestos = cargar_hoja("Resumen Repuestos")
 res_petroleo = cargar_hoja("Resumen Petróleo")
 
+# Asegurar columna 'Caja'
 if "Caja" not in mov_repuestos.columns:
     mov_repuestos["Caja"] = "Repuestos"
 if "Caja" not in mov_petroleo.columns:
@@ -72,7 +73,8 @@ if "Caja" not in mov_petroleo.columns:
 res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
 
-columnas_esperadas_mov = ["Monto", "Cuatrimestre", "Proveedor", "Caja"]
+# Columnas esperadas (incluyendo 'Área')
+columnas_esperadas_mov = ["Monto", "Cuatrimestre", "Proveedor", "Caja", "Área"]
 columnas_esperadas_resumen = ["Cuatrimestre", "Monto", "Total Gastado", "Saldo Actual", "Caja"]
 
 for df in [mov_repuestos, mov_petroleo]:
@@ -80,6 +82,7 @@ for df in [mov_repuestos, mov_petroleo]:
 for df in [res_repuestos, res_petroleo]:
     validar_columnas(df, columnas_esperadas_resumen)
 
+# Convertir montos a float
 for col in ["Monto", "Total Gastado", "Saldo Actual"]:
     res_repuestos[col] = res_repuestos[col].apply(lambda x: convertir_monto(x, "Repuestos"))
     res_petroleo[col] = res_petroleo[col].apply(lambda x: convertir_monto(x, "Petróleo"))
@@ -87,20 +90,26 @@ for col in ["Monto", "Total Gastado", "Saldo Actual"]:
 mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(lambda x: convertir_monto(x, "Repuestos"))
 mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(lambda x: convertir_monto(x, "Petróleo"))
 
+# Concatenar movimientos
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
+
+# Procesar la columna 'Área' para convertir cadenas separadas por comas en listas sin comillas
+df_mov['Área'] = df_mov['Área'].fillna('').apply(lambda x: [area.strip() for area in x.split(',')] if x else [])
 
 # --- Streamlit UI ---
 st.title("Control de Cajas Chicas 2025")
 
 st.sidebar.header("Filtros")
 
+# Filtro por cajas
 cajas = st.sidebar.multiselect(
     "Caja",
     options=sorted(df_mov["Caja"].unique()),
     default=sorted(df_mov["Caja"].unique())
 )
 
+# Filtrar proveedores según cajas seleccionadas
 proveedores_repuestos = mov_repuestos["Proveedor"].dropna().unique().tolist()
 proveedores_petroleo = mov_petroleo["Proveedor"].dropna().unique().tolist()
 
@@ -118,19 +127,32 @@ proveedor_seleccionado = st.sidebar.multiselect(
     default=proveedores_filtrados
 )
 
+# Filtro por cuatrimestres
 cuatrimestres = st.sidebar.multiselect(
     "Cuatrimestre",
     options=sorted(df_mov["Cuatrimestre"].dropna().unique()),
     default=sorted(df_mov["Cuatrimestre"].dropna().unique())
 )
 
+# Filtro por áreas (sectores)
+# Extraer todas las áreas únicas de todas las listas
+areas_unicas = sorted({area for sublist in df_mov['Área'] for area in sublist if area})
+areas_seleccionadas = st.sidebar.multiselect(
+    "Área",
+    options=areas_unicas,
+    default=areas_unicas
+)
+
+# Validar selección cajas
 if not cajas:
     st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
 else:
+    # Aplicar filtros, incluyendo filtro avanzado para áreas múltiples
     df_filtrado = df_mov[
         (df_mov["Caja"].isin(cajas)) &
         (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
-        (df_mov["Cuatrimestre"].isin(cuatrimestres))
+        (df_mov["Cuatrimestre"].isin(cuatrimestres)) &
+        (df_mov["Área"].apply(lambda areas: any(area in areas for area in areas_seleccionadas)))
     ]
 
     for caja in cajas:
