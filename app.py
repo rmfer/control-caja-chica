@@ -92,11 +92,17 @@ def exportar_pdf(cajas, df_res, cuatrimestres):
 
 # --- Carga de datos ---
 mov_repuestos = cargar_hoja("Movimientos Repuestos")
-res_repuestos = cargar_hoja("Resumen Repuestos")
 mov_petroleo = cargar_hoja("Movimientos Petróleo")
+res_repuestos = cargar_hoja("Resumen Repuestos")
 res_petroleo = cargar_hoja("Resumen Petróleo")
 
-# Agregar columna 'Caja' en los resúmenes que no la tienen
+# Agregar columna 'Caja' en movimientos si no existe
+if "Caja" not in mov_repuestos.columns:
+    mov_repuestos["Caja"] = "Repuestos"
+if "Caja" not in mov_petroleo.columns:
+    mov_petroleo["Caja"] = "Petróleo"
+
+# Agregar columna 'Caja' en resúmenes **antes** de validar
 res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
 
@@ -118,12 +124,6 @@ for col in ["Monto", "Total Gastado", "Saldo Actual"]:
 # Convertir montos en movimientos
 mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(lambda x: convertir_monto(x, "Repuestos"))
 mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(lambda x: convertir_monto(x, "Petróleo"))
-
-# Añadir columna 'Caja' en movimientos si no existe
-if "Caja" not in mov_repuestos.columns:
-    mov_repuestos["Caja"] = "Repuestos"
-if "Caja" not in mov_petroleo.columns:
-    mov_petroleo["Caja"] = "Petróleo"
 
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
