@@ -142,53 +142,66 @@ areas_seleccionadas = st.sidebar.multiselect(
     default=areas_disponibles
 )
 
-# Filtro por cuatrimestres
+# --- FILTRO DE CUATRIMESTRE CON OPCIONES FUTURAS ---
+
+# Definir lista completa de cuatrimestres posibles (ejemplo para 2025)
+cuatrimestres_posibles = ["1er Cuatrimestre", "2do Cuatrimestre", "3er Cuatrimestre", "4to Cuatrimestre"]
+
+# Obtener cuatrimestres que ya existen en df_mov
+cuatrimestres_existentes = sorted(df_mov["Cuatrimestre"].dropna().unique())
+
+# Combinar y ordenar (sin duplicados)
+cuatrimestres_totales = sorted(set(cuatrimestres_posibles) | set(cuatrimestres_existentes))
+
+# Filtro cuatrimestres
 cuatrimestres = st.sidebar.multiselect(
     "Cuatrimestre",
-    options=sorted(df_mov["Cuatrimestre"].dropna().unique()),
-    default=sorted(df_mov["Cuatrimestre"].dropna().unique())
+    options=cuatrimestres_totales,
+    default=cuatrimestres_existentes if cuatrimestres_existentes else cuatrimestres_posibles
 )
 
 # --- Aplicar todos los filtros ---
 if not cajas:
     st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
 else:
-    df_filtrado = df_mov[
+    # Filtrar resumen por cajas y cuatrimestres seleccionados
+    resumen_filtrado = df_res[
+        (df_res["Caja"].isin(cajas)) &
+        (df_res["Cuatrimestre"].isin(cuatrimestres))
+    ]
+
+    # Filtrar movimientos para calcular gastado
+    df_gastos_filtrado = df_mov[
         (df_mov["Caja"].isin(cajas)) &
         (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
         (df_mov["Cuatrimestre"].isin(cuatrimestres)) &
         (df_mov["Área"].apply(lambda areas: any(area in areas for area in areas_seleccionadas)))
     ]
 
+    # Mostrar métricas por caja
     for caja in cajas:
         st.subheader(f"Caja: {caja}")
-        resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
-        if not resumen.empty:
-            disponible = resumen["Monto"].sum()
-            gastado = resumen["Total Gastado"].sum()
-            saldo = resumen["Saldo Actual"].sum()
+        resumen_caja = resumen_filtrado[resumen_filtrado["Caja"] == caja]
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Disponible", formatear_moneda(disponible))
-            col2.metric("Gastado", formatear_moneda(gastado))
-            col3.metric("Saldo", formatear_moneda(saldo))
-        else:
-            st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
+        disponible = resumen_caja["Monto"].sum() if not resumen_caja.empty else 0.0
+        saldo = resumen_caja["Saldo Actual"].sum() if not resumen_caja.empty else 0.0
 
-    st.header("Gasto por Proveedor")
-    if len(cajas) == 1:
-        if not df_filtrado.empty:
-            gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
-            st.bar_chart(gastos_proveedor)
-        else:
-            st.info("No hay movimientos para los filtros seleccionados.")
-    else:
-        st.info("Selecciona una única caja para visualizar el gráfico de gasto por proveedor.")
+        gastado = df_gastos_filtrado[df_gastos_filtrado["Caja"] == caja]["Monto"].sum() if not df_gastos_filtrado.empty else 0.0
 
-    st.header("Movimientos filtrados")
-    if not df_filtrado.empty:
-        df_filtrado_display = df_filtrado.copy()
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Disponible", formatear_moneda(disponible))
+        col2.metric("Gastado", formatear_moneda(gastado))
+        col3.metric("Saldo", formatear_moneda(saldo))
+
+    # Mostrar gráfico y tabla solo si hay consumos y una única caja seleccionada
+    if len(cajas) == 1 and gastado > 0:
+        st.header("Gasto por Proveedor")
+        gastos_proveedor = df_gastos_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
+        st.bar_chart(gastos_proveedor)
+
+        st.header("Movimientos filtrados")
+        df_filtrado_display = df_gastos_filtrado.copy()
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
         st.dataframe(df_filtrado_display)
     else:
-        st.info("No hay movimientos para mostrar con los filtros actuales.")
+        st.info("No hay consumos para mostrar en el gráfico ni en la tabla con los filtros actuales.")
