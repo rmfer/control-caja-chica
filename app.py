@@ -41,7 +41,7 @@ def validar_columnas(df, columnas_requeridas):
         st.error(f"Faltan columnas en los datos: {', '.join(faltantes)}")
         st.stop()
 
-def convertir_monto(valor, tipo_caja):
+def convertir_monto(valor):
     if pd.isna(valor):
         return 0.0
     texto = str(valor).strip()
@@ -64,6 +64,7 @@ mov_petroleo = cargar_hoja("Movimientos Petróleo")
 res_repuestos = cargar_hoja("Resumen Repuestos")
 res_petroleo = cargar_hoja("Resumen Petróleo")
 
+# Añadir columna 'Caja' si no existe
 if "Caja" not in mov_repuestos.columns:
     mov_repuestos["Caja"] = "Repuestos"
 if "Caja" not in mov_petroleo.columns:
@@ -72,6 +73,7 @@ if "Caja" not in mov_petroleo.columns:
 res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
 
+# Validar columnas requeridas
 columnas_esperadas_mov = ["Monto", "Cuatrimestre", "Proveedor", "Caja"]
 columnas_esperadas_resumen = ["Cuatrimestre", "Monto", "Total Gastado", "Saldo Actual", "Caja"]
 
@@ -80,13 +82,15 @@ for df in [mov_repuestos, mov_petroleo]:
 for df in [res_repuestos, res_petroleo]:
     validar_columnas(df, columnas_esperadas_resumen)
 
-for col in ["Monto", "Total Gastado", "Saldo Actual"]:
-    res_repuestos[col] = res_repuestos[col].apply(lambda x: convertir_monto(x, "Repuestos"))
-    res_petroleo[col] = res_petroleo[col].apply(lambda x: convertir_monto(x, "Petróleo"))
+# Convertir columnas monetarias a float
+for df in [res_repuestos, res_petroleo]:
+    for col in ["Monto", "Total Gastado", "Saldo Actual"]:
+        df[col] = df[col].apply(convertir_monto)
 
-mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(lambda x: convertir_monto(x, "Repuestos"))
-mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(lambda x: convertir_monto(x, "Petróleo"))
+for df in [mov_repuestos, mov_petroleo]:
+    df["Monto"] = df["Monto"].apply(convertir_monto)
 
+# Concatenar datos
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
@@ -95,12 +99,14 @@ st.title("Control de Cajas Chicas 2025")
 
 st.sidebar.header("Filtros")
 
+# Filtro por caja
 cajas = st.sidebar.multiselect(
     "Caja",
     options=sorted(df_mov["Caja"].unique()),
     default=sorted(df_mov["Caja"].unique())
 )
 
+# Filtrar proveedores según cajas seleccionadas
 proveedores_repuestos = mov_repuestos["Proveedor"].dropna().unique().tolist()
 proveedores_petroleo = mov_petroleo["Proveedor"].dropna().unique().tolist()
 
@@ -118,6 +124,7 @@ proveedor_seleccionado = st.sidebar.multiselect(
     default=proveedores_filtrados
 )
 
+# Filtro por cuatrimestre
 cuatrimestres = st.sidebar.multiselect(
     "Cuatrimestre",
     options=sorted(df_mov["Cuatrimestre"].dropna().unique()),
@@ -127,12 +134,14 @@ cuatrimestres = st.sidebar.multiselect(
 if not cajas:
     st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
 else:
+    # Filtrar datos según selección
     df_filtrado = df_mov[
         (df_mov["Caja"].isin(cajas)) &
         (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
         (df_mov["Cuatrimestre"].isin(cuatrimestres))
     ]
 
+    # Mostrar métricas por caja
     for caja in cajas:
         st.subheader(f"Caja: {caja}")
         resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
@@ -148,6 +157,7 @@ else:
         else:
             st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
 
+    # Gráfico de gasto por proveedor (solo si hay una caja seleccionada)
     st.header("Gasto por Proveedor")
     if len(cajas) == 1:
         if not df_filtrado.empty:
@@ -158,6 +168,7 @@ else:
     else:
         st.info("Selecciona una única caja para visualizar el gráfico de gasto por proveedor.")
 
+    # Mostrar tabla de movimientos filtrados
     st.header("Movimientos filtrados")
     if not df_filtrado.empty:
         df_filtrado_display = df_filtrado.copy()
