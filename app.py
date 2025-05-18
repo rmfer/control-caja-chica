@@ -107,23 +107,16 @@ df_res['Cuatrimestre'] = df_res['Cuatrimestre'].apply(normalizar_cuatrimestre)
 # Procesar la columna 'Área' para convertir cadenas separadas por comas en listas sin comillas
 df_mov['Área'] = df_mov['Área'].fillna('').apply(lambda x: [area.strip() for area in x.split(',')] if x else [])
 
-# --- CSS para quitar padding/margin y que la imagen ocupe toda la ventana ---
+# --- CSS para imagen fullscreen sin scroll ---
 st.markdown(
     """
     <style>
-    /* Eliminar márgenes y padding para usar toda la pantalla */
+    /* Quitar padding/margin para usar toda la pantalla */
     .css-18e3th9 {
-        padding-top: 0rem;
-        padding-bottom: 0rem;
-        padding-left: 0rem;
-        padding-right: 0rem;
-        margin: 0;
+        padding: 0 !important;
+        margin: 0 !important;
     }
-    .css-1d391kg {
-        padding: 0;
-        margin: 0;
-    }
-    /* Imagen fullscreen */
+    /* Imagen fullscreen ajustada */
     .fullscreen-image > img {
         width: 100vw;
         height: 100vh;
@@ -132,16 +125,21 @@ st.markdown(
         padding: 0;
         display: block;
     }
+    /* Quitar margen del título para que no provoque scroll */
+    .css-1v3fvcr h1 {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# --- Función para mostrar pantalla de inicio con imagen fullscreen ---
+# --- Función para mostrar pantalla de inicio ---
 def mostrar_inicio():
-    st.title("¡Bienvenido a Control de Cajas Chicas 2025!")
+    # No usar st.title para evitar scroll
     st.markdown(
-        f'''
+        '''
         <div class="fullscreen-image">
             <img src="https://raw.githubusercontent.com/rmfer/control-caja-chica/main/inicio.jpg" alt="Inicio">
         </div>
