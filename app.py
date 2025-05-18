@@ -1,17 +1,23 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 from gspread_dataframe import get_as_dataframe
 import matplotlib.pyplot as plt
 
-# Configuración inicial
-st.set_page_config(page_title="Control de Caja Chica", layout="wide")
+# Configuración de la página
+st.set_page_config(page_title="Control Caja Chica", layout="wide")
 
-# Nombre de la planilla
+# Autenticación con Google Sheets usando secrets
+scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+service_account_info = st.secrets["gcp_service_account"]
+creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
+client = gspread.authorize(creds)
+
+# Nombre del documento de Google Sheets
 NOMBRE_PLANILLA = "iacajas2025"
 
-# Nombres de hojas
+# Hojas dentro del documento
 HOJAS = {
     "Movimientos Repuestos": "Movimientos Repuestos",
     "Resumen Repuestos": "Resumen Repuestos",
@@ -19,72 +25,65 @@ HOJAS = {
     "Resumen Petróleo": "Resumen Petróleo"
 }
 
-# Autenticación con Google Sheets desde st.secrets
-@st.cache_resource
-def autenticar_google():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(
-        st.secrets["gcp_service_account"], scopes=scope
-    )
-    client = gspread.authorize(creds)
-    return client
-
-# Cargar hoja de cálculo
 @st.cache_data
 def cargar_hoja(nombre_hoja):
-    client = autenticar_google()
     sheet = client.open(NOMBRE_PLANILLA).worksheet(nombre_hoja)
     df = get_as_dataframe(sheet, evaluate_formulas=True)
-    df = df.dropna(how="all")  # Eliminar filas completamente vacías
+    df = df.dropna(how="all")  # Quita filas completamente vacías
     return df
 
-# Título principal
-st.title("📊 Control de Caja Chica 2025")
-
-# Cargar hojas
+# Carga de datos
 df_mov_repuestos = cargar_hoja(HOJAS["Movimientos Repuestos"])
 df_resumen_repuestos = cargar_hoja(HOJAS["Resumen Repuestos"])
 df_mov_petroleo = cargar_hoja(HOJAS["Movimientos Petróleo"])
 df_resumen_petroleo = cargar_hoja(HOJAS["Resumen Petróleo"])
 
-# Mostrar resumen de cada caja
-st.subheader("Resumen General")
-col1, col2 = st.columns(2)
+# Interfaz
+st.title("Control de Caja Chica")
 
-with col1:
-    st.metric("💡 Repuestos - Saldo Actual", f"$ {df_resumen_repuestos['Saldo Actual'].iloc[-1]:,.2f}")
-    st.metric("🔧 Repuestos - Total Gastado", f"$ {df_resumen_repuestos['Total Gastado'].iloc[-1]:,.2f}")
+tab1, tab2 = st.tabs(["Repuestos", "Petróleo"])
 
-with col2:
-    st.metric("⛽ Petróleo - Saldo Actual", f"$ {df_resumen_petroleo['Saldo Actual'].iloc[-1]:,.2f}")
-    st.metric("🧾 Petróleo - Total Gastado", f"$ {df_resumen_petroleo['Total Gastado'].iloc[-1]:,.2f}")
+def mostrar_resumen(df_resumen, caja):
+    st.subheader("Resumen")
+    cuatrimestres = df_resumen["Cuatrimestre"].dropna().unique()
+    cuatrimestre = st.selectbox("Seleccionar cuatrimestre", cuatrimestres, key=f"cuatri_{caja}")
+    filtro = df_resumen["Cuatrimestre"] == cuatrimestre
+    datos = df_resumen[filtro].iloc[0]
+    monto = datos["Monto"]
+    gastado = datos["Total Gastado"]
+    saldo = datos["Saldo Actual"]
+    porc_gastado = (gastado / monto) * 100 if monto else 0
+    porc_saldo = (saldo / monto) * 100 if monto else 0
 
-# Filtro por cuatrimestre y proveedor
-st.subheader("🔎 Filtro de Movimientos")
-cuatrimestre = st.selectbox("Seleccionar cuatrimestre", sorted(df_mov_repuestos["Cuatrimestre"].dropna().unique()))
-proveedor = st.selectbox("Seleccionar proveedor", sorted(df_mov_repuestos["Proveedor"].dropna().unique()))
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Monto Asignado", f"${monto:,.2f}")
+    col2.metric("Gastado", f"${gastado:,.2f}", f"{porc_gastado:.1f}%")
+    col3.metric("Saldo", f"${saldo:,.2f}", f"{porc_saldo:.1f}%")
 
-# Filtros aplicados
-df_filtro_rep = df_mov_repuestos[
-    (df_mov_repuestos["Cuatrimestre"] == cuatrimestre) &
-    (df_mov_repuestos["Proveedor"] == proveedor)
-]
+    fig, ax = plt.subplots()
+    ax.pie([porc_gastado, porc_saldo], labels=["Gastado", "Saldo"], autopct="%1.1f%%", colors=["#e74c3c", "#2ecc71"])
+    ax.set_title(f"Distribución del Cuatrimestre {cuatrimestre}")
+    st.pyplot(fig)
 
-df_filtro_pet = df_mov_petroleo[
-    (df_mov_petroleo["Cuatrimestre"] == cuatrimestre) &
-    (df_mov_petroleo["Proveedor"] == proveedor)
-]
+def mostrar_movimientos(df_mov, caja):
+    st.subheader("Movimientos")
+    proveedor = st.selectbox("Filtrar por proveedor", ["Todos"] + df_mov["Proveedor"].dropna().unique().tolist(), key=f"prov_{caja}")
+    if proveedor != "Todos":
+        df_mov = df_mov[df_mov["Proveedor"] == proveedor]
 
-# Mostrar resultados
-st.subheader("🧾 Movimientos Filtrados")
-st.write("### Repuestos")
-st.dataframe(df_filtro_rep)
-st.write("### Petróleo")
-st.dataframe(df_filtro_pet)
+    st.dataframe(df_mov, use_container_width=True)
 
-# Gráfico simple (opcional)
-st.subheader("📈 Consumo por proveedor (Repuestos)")
-fig, ax = plt.subplots()
-df_mov_repuestos.groupby("Proveedor")["Monto"].sum().plot(kind="bar", ax=ax)
-ax.set_ylabel("Monto Total")
-st.pyplot(fig)
+    # Facturación por proveedor
+    st.subheader("Monto facturado por proveedor")
+    facturado = df_mov.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
+    st.bar_chart(facturado)
+
+with tab1:
+    st.header("Caja Chica: Repuestos")
+    mostrar_resumen(df_resumen_repuestos, "repuestos")
+    mostrar_movimientos(df_mov_repuestos, "repuestos")
+
+with tab2:
+    st.header("Caja Chica: Petróleo")
+    mostrar_resumen(df_resumen_petroleo, "petroleo")
+    mostrar_movimientos(df_mov_petroleo, "petroleo")
