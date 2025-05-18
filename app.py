@@ -40,9 +40,7 @@ def convertir_monto_petroleo(valor):
 def convertir_monto_repuestos(valor):
     try:
         texto = str(valor).strip()
-        # En repuestos el separador de miles es '.', pero puede haber ',' decimal
         if texto.count(",") == 1 and texto.count(".") > 1:
-            # Ejemplo: '625.500,00'
             texto = texto.replace(".", "").replace(",", ".")
         elif texto.count(",") == 0 and texto.count(".") > 1:
             texto = texto.replace(".", "")
@@ -134,3 +132,37 @@ st.header("Movimientos filtrados")
 # Formatear columna "Monto" para mostrar con separador miles y coma decimal
 df_filtrado_display = df_filtrado.copy()
 df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(
+    lambda x: f"${x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+)
+st.dataframe(df_filtrado_display)
+
+# --- Exportar a PDF ---
+def exportar_pdf():
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Resumen de Control de Cajas Chicas", ln=1, align="C")
+
+    for caja in cajas:
+        resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
+        if not resumen.empty:
+            disponible = resumen["Monto"].sum()
+            gastado = resumen["Total Gastado"].sum()
+            saldo = resumen["Saldo Actual"].sum()
+            pct_usado = (gastado / disponible) * 100 if disponible > 0 else 0
+
+            pdf.ln(10)
+            pdf.cell(200, 10, txt=f"Caja: {caja}", ln=1)
+            pdf.cell(200, 10, txt=f"Monto disponible: ${disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
+            pdf.cell(200, 10, txt=f"Total gastado: ${gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
+            pdf.cell(200, 10, txt=f"Saldo restante: ${saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
+            pdf.cell(200, 10, txt=f"Porcentaje usado: {pct_usado:.2f}%", ln=1)
+
+    buffer = BytesIO()
+    pdf.output(buffer)
+    buffer.seek(0)
+    return buffer
+
+if st.button("📄 Descargar resumen en PDF"):
+    pdf_bytes = exportar_pdf()
+    st.download_button("Descargar PDF", data=pdf_bytes.getvalue(), file_name="resumen_cajas.pdf", mime="application/pdf")
