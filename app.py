@@ -6,38 +6,52 @@ from oauth2client.service_account import ServiceAccountCredentials
 from fpdf import FPDF
 from io import BytesIO
 
-def cargar_datos(sheet_id):
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        credentials = ServiceAccountCredentials.from_json_keyfile_dict(
-            st.secrets["google_service_account"], scope
-        )
-        client = gspread.authorize(credentials)
+# --- Autenticación con Google Sheets ---
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(
+    st.secrets["google_service_account"], scope
+)
+client = gspread.authorize(credentials)
 
-        mov_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Repuestos").get_all_records())
-        res_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Repuestos").get_all_records())
-        mov_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Petróleo").get_all_records())
-        res_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Petróleo").get_all_records())
-
-        return mov_repuestos, res_repuestos, mov_petroleo, res_petroleo
-
-    except Exception as e:
-        st.error(f"Error al cargar datos: {e}")
-        return None, None, None, None
-
-# ID de la planilla de Google Sheets
 sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 
-# Cargar datos
-mov_repuestos, res_repuestos, mov_petroleo, res_petroleo = cargar_datos(sheet_id)
+# --- Cargar hojas ---
+mov_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Repuestos").get_all_records())
+res_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Repuestos").get_all_records())
+mov_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Petróleo").get_all_records())
+res_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Petróleo").get_all_records())
 
-# Si no carga los datos, se detiene la app
-if mov_repuestos is None:
-    st.stop()
+# --- Funciones de limpieza de números ---
+def limpiar_numero_repuestos(valor):
+    try:
+        texto = str(valor).strip()
+        texto = texto.replace(".", "")  # Quitar separador de miles
+        texto = texto.replace(",", ".")  # Cambiar coma decimal a punto
+        return float(texto)
+    except:
+        return None
 
-# --- Procesar y limpiar datos ---
+def limpiar_numero_petroleo(valor):
+    try:
+        texto = str(valor).strip()
+        texto = texto.replace(",", "")  # Quitar separador de miles (si hay)
+        return float(texto)
+    except:
+        return None
 
-# Añadir columna "Caja"
+# --- Aplicar limpieza numérica ---
+for col in ["Monto", "Total Gastado", "Saldo Actual"]:
+    if col in res_repuestos.columns:
+        res_repuestos[col] = res_repuestos[col].apply(limpiar_numero_repuestos)
+    if col in res_petroleo.columns:
+        res_petroleo[col] = res_petroleo[col].apply(limpiar_numero_petroleo)
+
+if "Monto" in mov_repuestos.columns:
+    mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(limpiar_numero_repuestos)
+if "Monto" in mov_petroleo.columns:
+    mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(limpiar_numero_petroleo)
+
+# --- Unificar datos ---
 mov_repuestos["Caja"] = "Repuestos"
 mov_petroleo["Caja"] = "Petróleo"
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
@@ -46,30 +60,11 @@ res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
-# Limpiar nombres columnas
+# Limpiar nombres de columnas
 for df in [mov_repuestos, mov_petroleo, df_mov, res_repuestos, res_petroleo, df_res]:
     df.columns = df.columns.str.strip()
 
-# Función para limpiar números en formato 1.234.567,89 → 1234567.89
-def limpiar_numero(valor):
-    try:
-        texto = str(valor).strip()
-        texto = texto.replace(".", "").replace(",", ".")
-        return float(texto)
-    except:
-        return None
-
-# Aplicar limpieza solo a las hojas de resumen (donde se guardan totales)
-for col in ["Monto", "Total Gastado", "Saldo Actual"]:
-    if col in df_res.columns:
-        df_res[col] = df_res[col].apply(limpiar_numero)
-
-# Limpiar 'Monto' en movimientos
-if "Monto" in df_mov.columns:
-    df_mov["Monto"] = df_mov["Monto"].apply(limpiar_numero)
-
-# --- Interfaz Streamlit ---
-
+# --- Interfaz ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 st.title("Control de Cajas Chicas 2025")
 
@@ -96,12 +91,12 @@ for caja in cajas:
         disponible = resumen["Monto"].sum()
         gastado = resumen["Total Gastado"].sum()
         saldo = resumen["Saldo Actual"].sum()
-        pct_usado = (gastado / disponible) * 100 if disponible and disponible > 0 else 0
+        pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Disponible", f"${disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        col2.metric("Gastado", f"${gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        col3.metric("Saldo", f"${saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        col1.metric("Disponible", f"${disponible:,.2f}")
+        col2.metric("Gastado", f"${gastado:,.2f}")
+        col3.metric("Saldo", f"${saldo:,.2f}")
 
         # Gráfico de barras
         fig, ax = plt.subplots()
@@ -116,16 +111,7 @@ st.bar_chart(gastos_proveedor)
 
 # --- Tabla de movimientos ---
 st.header("Movimientos filtrados")
-def formatear_monto(monto):
-    if pd.isna(monto):
-        return ""
-    return f"${monto:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-df_filtrado_display = df_filtrado.copy()
-if "Monto" in df_filtrado_display.columns:
-    df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_monto)
-
-st.dataframe(df_filtrado_display)
+st.dataframe(df_filtrado.style.format({"Monto": "{:,.2f}"}))
 
 # --- Exportar a PDF ---
 def exportar_pdf():
@@ -140,13 +126,13 @@ def exportar_pdf():
             disponible = resumen["Monto"].sum()
             gastado = resumen["Total Gastado"].sum()
             saldo = resumen["Saldo Actual"].sum()
-            pct_usado = (gastado / disponible) * 100 if disponible and disponible > 0 else 0
+            pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
 
             pdf.ln(10)
             pdf.cell(200, 10, txt=f"Caja: {caja}", ln=1)
-            pdf.cell(200, 10, txt=f"Monto disponible: ${disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
-            pdf.cell(200, 10, txt=f"Total gastado: ${gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
-            pdf.cell(200, 10, txt=f"Saldo restante: ${saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
+            pdf.cell(200, 10, txt=f"Monto disponible: ${disponible:,.2f}", ln=1)
+            pdf.cell(200, 10, txt=f"Total gastado: ${gastado:,.2f}", ln=1)
+            pdf.cell(200, 10, txt=f"Saldo restante: ${saldo:,.2f}", ln=1)
             pdf.cell(200, 10, txt=f"Porcentaje usado: {pct_usado:.2f}%", ln=1)
 
     buffer = BytesIO()
