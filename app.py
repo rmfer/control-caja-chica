@@ -38,7 +38,7 @@ for df in [mov_repuestos, mov_petroleo, df_mov, res_repuestos, res_petroleo, df_
 def convertir_valores(valor):
     try:
         texto = str(valor).strip()
-        texto = texto.replace(".", "").replace(",", ".")  # elimina separador de miles, cambia coma por punto
+        texto = texto.replace(".", "").replace(",", ".")
         return float(texto)
     except:
         return None
@@ -47,13 +47,12 @@ df_res["Monto"] = df_res["Monto"].apply(convertir_valores)
 df_res["Total Gastado"] = df_res["Total Gastado"].apply(convertir_valores)
 df_res["Saldo Actual"] = df_res["Saldo Actual"].apply(convertir_valores)
 
-df_res["Total Gastado"] = df_res["Total Gastado"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
-df_res["Saldo Actual"] = df_res["Saldo Actual"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
-
-# Convertir a float
-df_res["Monto"] = pd.to_numeric(df_res["Monto"], errors="coerce")
-df_res["Total Gastado"] = pd.to_numeric(df_res["Total Gastado"], errors="coerce")
-df_res["Saldo Actual"] = pd.to_numeric(df_res["Saldo Actual"], errors="coerce")
+# --- Función de formato europeo ---
+def formatear_monto(monto):
+    try:
+        return f"$ {monto:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    except:
+        return monto
 
 # --- Interfaz ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -85,9 +84,9 @@ for caja in cajas:
         pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Disponible", f"${disponible:,.2f}")
-        col2.metric("Gastado", f"${gastado:,.2f}")
-        col3.metric("Saldo", f"${saldo:,.2f}")
+        col1.metric("Disponible", formatear_monto(disponible))
+        col2.metric("Gastado", formatear_monto(gastado))
+        col3.metric("Saldo", formatear_monto(saldo))
 
         # Gráfico de barras
         fig, ax = plt.subplots()
@@ -104,7 +103,13 @@ st.bar_chart(gastos_proveedor)
 
 # --- Tabla de movimientos ---
 st.header("Movimientos filtrados")
-st.dataframe(df_filtrado)
+df_filtrado["Monto Formateado"] = df_filtrado["Monto"].apply(formatear_monto)
+columnas = list(df_filtrado.columns)
+if "Monto" in columnas and "Monto Formateado" in columnas:
+    columnas.remove("Monto")
+    columnas.insert(columnas.index("Monto Formateado"), "Monto")
+df_mostrar = df_filtrado[columnas]
+st.dataframe(df_mostrar)
 
 # --- Exportar a PDF ---
 def exportar_pdf():
@@ -123,15 +128,15 @@ def exportar_pdf():
 
             pdf.ln(10)
             pdf.cell(200, 10, txt=f"Caja: {caja}", ln=1)
-            pdf.cell(200, 10, txt=f"Monto disponible: ${disponible:,.2f}", ln=1)
-            pdf.cell(200, 10, txt=f"Total gastado: ${gastado:,.2f}", ln=1)
-            pdf.cell(200, 10, txt=f"Saldo restante: ${saldo:,.2f}", ln=1)
+            pdf.cell(200, 10, txt=f"Monto disponible: {formatear_monto(disponible)}", ln=1)
+            pdf.cell(200, 10, txt=f"Total gastado: {formatear_monto(gastado)}", ln=1)
+            pdf.cell(200, 10, txt=f"Saldo restante: {formatear_monto(saldo)}", ln=1)
             pdf.cell(200, 10, txt=f"Porcentaje usado: {pct_usado:.2f}%", ln=1)
 
     buffer = BytesIO()
     pdf.output(buffer)
     return buffer
 
-if st.button("📄 Descargar resumen en PDF"):
+if st.button("\ud83d\udcc4 Descargar resumen en PDF"):
     pdf_bytes = exportar_pdf()
     st.download_button("Descargar PDF", data=pdf_bytes.getvalue(), file_name="resumen_cajas.pdf", mime="application/pdf")
