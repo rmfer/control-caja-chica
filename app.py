@@ -12,7 +12,6 @@ import re
 try:
     locale.setlocale(locale.LC_ALL, 'es_AR.UTF-8')
 except locale.Error:
-    # En caso de error, usa locale por defecto
     locale.setlocale(locale.LC_ALL, '')
 
 # --- Autenticación con Google Sheets ---
@@ -49,11 +48,9 @@ def convertir_monto(valor, tipo_caja):
     texto = str(valor).strip()
     try:
         if tipo_caja == "Repuestos":
-            # Eliminar puntos de miles y cambiar coma decimal a punto
             texto = re.sub(r'\.', '', texto)
             texto = texto.replace(',', '.')
         else:
-            # Solo cambiar coma decimal a punto
             texto = texto.replace(',', '.')
         return float(texto)
     except ValueError:
@@ -99,10 +96,19 @@ res_repuestos = cargar_hoja("Resumen Repuestos")
 mov_petroleo = cargar_hoja("Movimientos Petróleo")
 res_petroleo = cargar_hoja("Resumen Petróleo")
 
+# Agregar columna 'Caja' en los resúmenes que no la tienen
+res_repuestos["Caja"] = "Repuestos"
+res_petroleo["Caja"] = "Petróleo"
+
 # Validar columnas
-columnas_esperadas = ["Monto", "Total Gastado", "Saldo Actual", "Cuatrimestre", "Proveedor", "Caja"]
-for df in [mov_repuestos, mov_petroleo, res_repuestos, res_petroleo]:
-    validar_columnas(df, columnas_esperadas)
+columnas_esperadas_mov = ["Monto", "Cuatrimestre", "Proveedor", "Caja"]
+columnas_esperadas_resumen = ["Cuatrimestre", "Monto", "Total Gastado", "Saldo Actual", "Caja"]
+
+for df in [mov_repuestos, mov_petroleo]:
+    validar_columnas(df, columnas_esperadas_mov)
+
+for df in [res_repuestos, res_petroleo]:
+    validar_columnas(df, columnas_esperadas_resumen)
 
 # Convertir montos en resúmenes
 for col in ["Monto", "Total Gastado", "Saldo Actual"]:
@@ -113,15 +119,11 @@ for col in ["Monto", "Total Gastado", "Saldo Actual"]:
 mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(lambda x: convertir_monto(x, "Repuestos"))
 mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(lambda x: convertir_monto(x, "Petróleo"))
 
-# Añadir columna 'Caja' si no existe (por si acaso)
+# Añadir columna 'Caja' en movimientos si no existe
 if "Caja" not in mov_repuestos.columns:
     mov_repuestos["Caja"] = "Repuestos"
 if "Caja" not in mov_petroleo.columns:
     mov_petroleo["Caja"] = "Petróleo"
-if "Caja" not in res_repuestos.columns:
-    res_repuestos["Caja"] = "Repuestos"
-if "Caja" not in res_petroleo.columns:
-    res_petroleo["Caja"] = "Petróleo"
 
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
@@ -167,7 +169,7 @@ for caja in cajas:
             altura = barra.get_height()
             ax.annotate(formatear_moneda(altura),
                         xy=(barra.get_x() + barra.get_width() / 2, altura),
-                        xytext=(0, 5),  # 5 puntos por encima de la barra
+                        xytext=(0, 5),
                         textcoords="offset points",
                         ha='center', va='bottom')
         st.pyplot(fig)
