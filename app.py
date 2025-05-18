@@ -150,7 +150,8 @@ else:
             col2.metric("Gastado", formatear_moneda(gastado))
             col3.metric("Saldo", formatear_moneda(saldo))
 
-            fig, ax = plt.subplots(figsize=(5, 3))  # Tamaño reducido del gráfico
+            # Tamaño reducido a la mitad: (2.5, 1.5)
+            fig, ax = plt.subplots(figsize=(2.5, 1.5))
             barras = ax.bar(["Gastado", "Saldo"], [gastado, saldo], color=["#ff4b4b", "#4bffa8"])
 
             ax.get_yaxis().get_major_formatter().set_scientific(False)
