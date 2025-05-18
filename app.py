@@ -112,6 +112,9 @@ df_res['Cuatrimestre'] = df_res['Cuatrimestre'].apply(normalizar_cuatrimestre)
 df_mov['Área'] = df_mov['Área'].fillna('').apply(lambda x: [area.strip() for area in x.split(',')] if x else [])
 
 # --- Streamlit UI ---
+
+# Mostrar mensaje de bienvenida y título principal
+st.markdown("### ¡Bienvenido!")
 st.title("Control de Cajas Chicas 2025")
 
 st.sidebar.header("Filtros")
