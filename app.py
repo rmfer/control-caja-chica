@@ -3,8 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from fpdf import FPDF
-from io import BytesIO
 import locale
 import re
 
@@ -63,33 +61,6 @@ def formatear_moneda(valor):
         return locale.currency(valor, grouping=True)
     except Exception:
         return f"${valor:,.2f}"
-
-def exportar_pdf(cajas, df_res, cuatrimestres):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "Resumen de Control de Cajas Chicas", ln=1, align="C")
-    pdf.set_font("Arial", size=12)
-
-    for caja in cajas:
-        resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
-        if not resumen.empty:
-            disponible = resumen["Monto"].sum()
-            gastado = resumen["Total Gastado"].sum()
-            saldo = resumen["Saldo Actual"].sum()
-            pct_usado = (gastado / disponible) * 100 if disponible > 0 else 0
-
-            pdf.ln(10)
-            pdf.cell(0, 10, f"Caja: {caja}", ln=1)
-            pdf.cell(0, 10, f"Monto disponible: {formatear_moneda(disponible)}", ln=1)
-            pdf.cell(0, 10, f"Total gastado: {formatear_moneda(gastado)}", ln=1)
-            pdf.cell(0, 10, f"Saldo restante: {formatear_moneda(saldo)}", ln=1)
-            pdf.cell(0, 10, f"Porcentaje usado: {pct_usado:.2f}%", ln=1)
-
-    buffer = BytesIO()
-    pdf.output(buffer)
-    buffer.seek(0)
-    return buffer
 
 # --- Carga de datos ---
 mov_repuestos = cargar_hoja("Movimientos Repuestos")
@@ -222,8 +193,3 @@ if not df_filtrado.empty:
     st.dataframe(df_filtrado_display)
 else:
     st.info("No hay movimientos para mostrar con los filtros actuales.")
-
-# Exportar PDF
-if st.button("📄 Descargar resumen en PDF"):
-    pdf_bytes = exportar_pdf(cajas, df_res, cuatrimestres)
-    st.download_button("Descargar PDF", data=pdf_bytes.getvalue(), file_name="resumen_cajas.pdf", mime="application/pdf")
