@@ -1,129 +1,172 @@
 import streamlit as st
-import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+import pandas as pd
+import matplotlib.pyplot as plt
+from io import BytesIO
 from fpdf import FPDF
 
-# --- Configuración de la página ---
+# Configuración página
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 
-# --- Autenticación con Google Sheets usando Streamlit Secrets ---
+# Credenciales Google desde Streamlit secrets
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 service_account_info = st.secrets["gcp_service_account"]
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
+creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
 client = gspread.authorize(creds)
 
-# --- ID de la planilla ---
-sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
+# Parámetros constantes
+NOMBRE_PLANILLA = "iacajas2025"
+HOJAS = {
+    "Movimientos Repuestos": "Movimientos Repuestos",
+    "Resumen Repuestos": "Resumen Repuestos",
+    "Movimientos Petróleo": "Movimientos Petróleo",
+    "Resumen Petróleo": "Resumen Petróleo"
+}
 
-# --- Funciones para limpiar y convertir montos ---
+# Función para cargar hoja y devolver DataFrame
+@st.cache_data(ttl=600)
+def cargar_hoja(worksheet_name):
+    sheet = client.open(NOMBRE_PLANILLA)
+    worksheet = sheet.worksheet(worksheet_name)
+    data = worksheet.get_all_records()
+    return pd.DataFrame(data)
 
-def limpiar_monto_repuestos(valor):
-    """
-    Convierte texto como '625.500,00' a float 625500.00 para la hoja de Repuestos.
-    """
-    if isinstance(valor, str):
-        valor = valor.replace('.', '').replace(',', '.').replace('$', '').strip()
-        try:
-            return float(valor)
-        except:
-            return 0.0
-    elif pd.isna(valor):
+# Funciones para limpiar y convertir montos
+def limpiar_monto_repuestos(monto_str):
+    if pd.isna(monto_str) or monto_str == "":
         return 0.0
-    else:
-        return float(valor)
-
-def limpiar_monto_petroleo(valor):
-    """
-    Convierte texto como '625.500,00' a float 625500.00 para la hoja de Petróleo.
-    """
-    # En Petróleo parece que ya está bien, solo limpiamos símbolos y espacios.
-    if isinstance(valor, str):
-        valor = valor.replace('$', '').replace(' ', '').replace('.', '').replace(',', '.')
-        try:
-            return float(valor)
-        except:
-            return 0.0
-    elif pd.isna(valor):
+    monto_str = monto_str.replace(".", "").replace(",", ".")
+    try:
+        return float(monto_str)
+    except:
         return 0.0
-    else:
-        return float(valor)
 
-# --- Cargar datos desde Google Sheets ---
-ws_repuestos = client.open_by_key(sheet_id).worksheet("Movimientos Repuestos")
-ws_petroleo = client.open_by_key(sheet_id).worksheet("Movimientos Petróleo")
+def limpiar_monto_petroleo(monto_str):
+    if pd.isna(monto_str) or monto_str == "":
+        return 0.0
+    monto_str = monto_str.replace(",", "")
+    try:
+        return float(monto_str)
+    except:
+        return 0.0
 
-df_repuestos = pd.DataFrame(ws_repuestos.get_all_records())
-df_petroleo = pd.DataFrame(ws_petroleo.get_all_records())
+# Cargar datos
+df_mov_repuestos = cargar_hoja(HOJAS["Movimientos Repuestos"])
+df_res_repuestos = cargar_hoja(HOJAS["Resumen Repuestos"])
+df_mov_petroleo = cargar_hoja(HOJAS["Movimientos Petróleo"])
+df_res_petroleo = cargar_hoja(HOJAS["Resumen Petróleo"])
 
-# --- Limpiar columnas 'Monto' según cada caja ---
-df_repuestos["Monto"] = df_repuestos["Monto"].apply(limpiar_monto_repuestos)
-df_petroleo["Monto"] = df_petroleo["Monto"].apply(limpiar_monto_petroleo)
+# Limpiar montos
+if "Monto" in df_mov_repuestos.columns:
+    df_mov_repuestos["Monto"] = df_mov_repuestos["Monto"].apply(limpiar_monto_repuestos)
+if "Monto" in df_mov_petroleo.columns:
+    df_mov_petroleo["Monto"] = df_mov_petroleo["Monto"].apply(limpiar_monto_petroleo)
 
-# --- Resúmenes ---
-def calcular_resumen(df):
-    total_gastado = df["Monto"].sum()
-    saldo = df["Saldo Actual"].iloc[0] if "Saldo Actual" in df.columns and not df["Saldo Actual"].empty else 0
-    disponible = saldo + total_gastado  # asumiendo que saldo + gastado es el total asignado
-    pct_usado = (total_gastado / disponible) * 100 if disponible > 0 else 0
-    pct_disponible = 100 - pct_usado
-    return total_gastado, saldo, disponible, pct_usado, pct_disponible
-
-# --- Cargar hojas resumen para datos precisos ---
-ws_res_repuestos = client.open_by_key(sheet_id).worksheet("Resumen Repuestos")
-ws_res_petroleo = client.open_by_key(sheet_id).worksheet("Resumen Petróleo")
-
-res_repuestos = pd.DataFrame(ws_res_repuestos.get_all_records())
-res_petroleo = pd.DataFrame(ws_res_petroleo.get_all_records())
-
-# --- Aplicar limpieza a resúmenes también ---
-for col in ["Monto", "Total Gastado", "Saldo Actual"]:
-    if col in res_repuestos.columns:
-        res_repuestos[col] = res_repuestos[col].apply(limpiar_monto_repuestos)
-    if col in res_petroleo.columns:
-        res_petroleo[col] = res_petroleo[col].apply(limpiar_monto_petroleo)
-
-# --- Interfaz Streamlit ---
-
+# Título
 st.title("Control de Cajas Chicas 2025")
 
-caja_seleccionada = st.selectbox("Selecciona la caja", ["Repuestos", "Petróleo"])
+# Selección caja
+caja = st.selectbox("Selecciona la caja chica:", ["Repuestos", "Petróleo"])
 
-if caja_seleccionada == "Repuestos":
-    st.header("Movimientos Caja Repuestos")
-    st.dataframe(df_repuestos)
+# Selección cuatrimestre
+df_mov = df_mov_repuestos.copy() if caja == "Repuestos" else df_mov_petroleo.copy()
+df_res = df_res_repuestos.copy() if caja == "Repuestos" else df_res_petroleo.copy()
 
-    total_gastado, saldo, disponible, pct_usado, pct_disponible = calcular_resumen(res_repuestos)
+cuatrimestres = df_mov["Cuatrimestre"].unique()
+cuatrimestre_seleccionado = st.selectbox("Selecciona cuatrimestre:", sorted(cuatrimestres))
+df_mov_filtrado = df_mov[df_mov["Cuatrimestre"] == cuatrimestre_seleccionado]
+
+# Resumen
+if "Saldo Actual" in df_res.columns and "Cuatrimestre" in df_res.columns:
+    saldo_actual = df_res.loc[df_res["Cuatrimestre"] == cuatrimestre_seleccionado, "Saldo Actual"].values
+    total_gastado = df_res.loc[df_res["Cuatrimestre"] == cuatrimestre_seleccionado, "Total Gastado"].values
+    monto_total = df_res.loc[df_res["Cuatrimestre"] == cuatrimestre_seleccionado, "Monto"].values
 else:
-    st.header("Movimientos Caja Petróleo")
-    st.dataframe(df_petroleo)
+    saldo_actual = [0]
+    total_gastado = [0]
+    monto_total = [0]
 
-    total_gastado, saldo, disponible, pct_usado, pct_disponible = calcular_resumen(res_petroleo)
+st.subheader(f"Resumen {caja} - Cuatrimestre {cuatrimestre_seleccionado}")
+st.markdown(f"- **Monto Total:** ${monto_total[0]:,.2f}")
+st.markdown(f"- **Total Gastado:** ${total_gastado[0]:,.2f}")
+st.markdown(f"- **Saldo Actual:** ${saldo_actual[0]:,.2f}")
 
-# Mostrar resumen
-st.markdown(f"**Total Gastado:** ${total_gastado:,.2f}")
-st.markdown(f"**Saldo Actual:** ${saldo:,.2f}")
-st.markdown(f"**Total Asignado:** ${disponible:,.2f}")
-st.markdown(f"**% Usado:** {pct_usado:.2f}%")
-st.markdown(f"**% Disponible:** {pct_disponible:.2f}%")
+# Tabla movimientos
+st.subheader(f"Movimientos {caja} - Cuatrimestre {cuatrimestre_seleccionado}")
+st.dataframe(df_mov_filtrado)
 
-# --- Exportar a PDF (opcional) ---
-if st.button("Exportar resumen a PDF"):
+# Gráfico gastos por proveedor
+st.subheader("Gastos por Proveedor")
+
+if "Proveedor" in df_mov_filtrado.columns and "Monto" in df_mov_filtrado.columns:
+    gastos_proveedor = df_mov_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    gastos_proveedor.plot(kind="bar", ax=ax)
+    ax.set_ylabel("Monto")
+    ax.set_title(f"Gastos por Proveedor - {caja} - {cuatrimestre_seleccionado}")
+    st.pyplot(fig)
+else:
+    st.write("No hay datos de proveedor o monto para mostrar.")
+
+# --- Exportar PDF ---
+def generar_pdf(resumen, df_movimientos, fig, caja, cuatrimestre):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt=f"Resumen Caja {caja_seleccionada} 2025", ln=True)
-    pdf.cell(200, 10, txt=f"Total Gastado: ${total_gastado:,.2f}", ln=True)
-    pdf.cell(200, 10, txt=f"Saldo Actual: ${saldo:,.2f}", ln=True)
-    pdf.cell(200, 10, txt=f"Total Asignado: ${disponible:,.2f}", ln=True)
-    pdf.cell(200, 10, txt=f"% Usado: {pct_usado:.2f}%", ln=True)
-    pdf.cell(200, 10, txt=f"% Disponible: {pct_disponible:.2f}%", ln=True)
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, f"Resumen {caja} - Cuatrimestre {cuatrimestre}", ln=True, align="C")
 
-    pdf_output_path = "resumen_caja.pdf"
-    pdf.output(pdf_output_path)
+    pdf.set_font("Arial", "", 12)
+    pdf.ln(5)
+    pdf.cell(0, 10, f"Monto Total: ${resumen['Monto Total']:,.2f}", ln=True)
+    pdf.cell(0, 10, f"Total Gastado: ${resumen['Total Gastado']:,.2f}", ln=True)
+    pdf.cell(0, 10, f"Saldo Actual: ${resumen['Saldo Actual']:,.2f}", ln=True)
 
-    with open(pdf_output_path, "rb") as f:
-        st.download_button(label="Descargar PDF", data=f, file_name=pdf_output_path, mime="application/pdf")
+    pdf.ln(10)
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Movimientos:", ln=True)
+    pdf.set_font("Arial", "", 10)
+
+    # Tabla movimientos simplificada en PDF
+    col_width = pdf.epw / len(df_movimientos.columns)  # Equal column width
+    row_height = 6
+
+    # Headers
+    for col_name in df_movimientos.columns:
+        pdf.cell(col_width, row_height, str(col_name), border=1)
+    pdf.ln(row_height)
+
+    # Rows (limitar a 20 filas para no llenar mucho)
+    for i, row in df_movimientos.head(20).iterrows():
+        for item in row:
+            txt = str(item)
+            if len(txt) > 15:
+                txt = txt[:12] + "..."
+            pdf.cell(col_width, row_height, txt, border=1)
+        pdf.ln(row_height)
+
+    # Agregar gráfico como imagen PNG en memoria
+    img_bytes = BytesIO()
+    fig.savefig(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    pdf.add_page()
+    pdf.image(img_bytes, x=10, y=20, w=pdf.epw*0.9)
+
+    return pdf.output(dest='S').encode('latin1')
+
+# Botón para descargar PDF
+if st.button("Exportar resumen y movimientos a PDF"):
+    resumen_dict = {
+        "Monto Total": monto_total[0],
+        "Total Gastado": total_gastado[0],
+        "Saldo Actual": saldo_actual[0]
+    }
+
+    pdf_bytes = generar_pdf(resumen_dict, df_mov_filtrado, fig, caja, cuatrimestre_seleccionado)
+
+    st.download_button(
+        label="Descargar PDF",
+        data=pdf_bytes,
+        file_name=f"Resumen_{caja}_{cuatrimestre_seleccionado}.pdf",
+        mime="application/pdf"
+    )
