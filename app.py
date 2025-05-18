@@ -113,8 +113,7 @@ df_mov['Área'] = df_mov['Área'].fillna('').apply(lambda x: [area.strip() for a
 
 # --- Streamlit UI ---
 
-# Mostrar mensaje de bienvenida y título principal
-st.markdown("### ¡Bienvenido!")
+# Mostrar título principal
 st.title("Control de Cajas Chicas 2025")
 
 st.sidebar.header("Filtros")
@@ -125,6 +124,10 @@ cajas = st.sidebar.multiselect(
     options=sorted(df_mov["Caja"].unique()),
     default=sorted(df_mov["Caja"].unique())
 )
+
+# Mostrar "¡Bienvenido!" solo si ambas cajas están seleccionadas
+if set(cajas) == {"Repuestos", "Petróleo"}:
+    st.title("¡Bienvenido!")
 
 # Filtrar proveedores según cajas seleccionadas
 proveedores_repuestos = mov_repuestos["Proveedor"].dropna().unique().tolist()
