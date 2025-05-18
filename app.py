@@ -250,6 +250,9 @@ else:
         # Resetear índice para que no se muestre la columna índice numérica
         df_filtrado_display = df_filtrado_display.reset_index(drop=True)
 
+        # Convertir listas en 'Área' a texto limpio sin corchetes ni comillas
+        df_filtrado_display['Área'] = df_filtrado_display['Área'].apply(lambda x: ', '.join(x) if isinstance(x, list) else x)
+
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
 
         # Mostrar tabla sin índice visible usando st.table
