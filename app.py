@@ -1,6 +1,4 @@
 import streamlit as st
-st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
-
 import pandas as pd
 import matplotlib.pyplot as plt
 import gspread
@@ -8,7 +6,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from fpdf import FPDF
 from io import BytesIO
 
-# Autenticación Google Sheets
+# --- Autenticación con Google Sheets ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(
     st.secrets["google_service_account"], scope
@@ -17,62 +15,61 @@ client = gspread.authorize(credentials)
 
 sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 
+# --- Función para convertir montos correctamente según origen ---
+def convertir_monto(valor, tipo_caja):
+    if pd.isna(valor):
+        return 0.0
+    texto = str(valor).strip()
+    try:
+        if tipo_caja == "Repuestos":
+            # Para repuestos, los miles usan puntos y decimales comas: "625.500,00"
+            texto = texto.replace(".", "").replace(",", ".")
+        else:
+            # Para petróleo, miles no tienen puntos, decimales usan coma: "625500,00"
+            texto = texto.replace(",", ".")
+        return float(texto)
+    except Exception:
+        return 0.0
+
+# --- Cargar hojas ---
 mov_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Repuestos").get_all_records())
 res_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Repuestos").get_all_records())
 mov_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Petróleo").get_all_records())
 res_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Petróleo").get_all_records())
 
+# Limpiar nombres de columnas
 for df in [mov_repuestos, mov_petroleo, res_repuestos, res_petroleo]:
     df.columns = df.columns.str.strip()
 
-# Función para Repuestos (eliminar puntos miles excepto el decimal final)
-def convertir_monto_repuestos(valor):
-    try:
-        texto = str(valor).strip()
-        texto = texto.replace(",", ".")  # coma decimal a punto
-        # eliminar todos los puntos menos el último (decimal)
-        if texto.count(".") > 1:
-            partes = texto.split(".")
-            texto = "".join(partes[:-1]) + "." + partes[-1]
-        return float(texto)
-    except:
-        return 0.0
-
-def convertir_monto_petroleo(valor):
-    try:
-        texto = str(valor).strip()
-        texto = texto.replace(".", "").replace(",", ".")
-        return float(texto)
-    except:
-        return 0.0
-
-# Aplicar conversiones
+# Convertir montos en resúmenes con la función según caja
 for col in ["Monto", "Total Gastado", "Saldo Actual"]:
-    if col in res_repuestos.columns:
-        res_repuestos[col] = res_repuestos[col].apply(convertir_monto_repuestos)
-    if col in res_petroleo.columns:
-        res_petroleo[col] = res_petroleo[col].apply(convertir_monto_petroleo)
+    res_repuestos[col] = res_repuestos[col].apply(lambda x: convertir_monto(x, "Repuestos"))
+    res_petroleo[col] = res_petroleo[col].apply(lambda x: convertir_monto(x, "Petróleo"))
 
-if "Monto" in mov_repuestos.columns:
-    mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(convertir_monto_repuestos)
-if "Monto" in mov_petroleo.columns:
-    mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(convertir_monto_petroleo)
+# Convertir montos en movimientos con la función según caja
+mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(lambda x: convertir_monto(x, "Repuestos"))
+mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(lambda x: convertir_monto(x, "Petróleo"))
 
+# Añadir columna 'Caja'
 mov_repuestos["Caja"] = "Repuestos"
 mov_petroleo["Caja"] = "Petróleo"
+df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
+
 res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
-
-df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
-# Interfaz
+# --- Streamlit UI ---
+st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 st.title("Control de Cajas Chicas 2025")
 
+# Filtros
+st.sidebar.header("Filtros")
 cajas = st.sidebar.multiselect("Caja", df_mov["Caja"].unique(), default=df_mov["Caja"].unique())
 cuatrimestres = st.sidebar.multiselect("Cuatrimestre", df_mov["Cuatrimestre"].unique(), default=df_mov["Cuatrimestre"].unique())
 proveedores = st.sidebar.multiselect("Proveedor", df_mov["Proveedor"].unique(), default=df_mov["Proveedor"].unique())
 
+# Aplicar filtros
 df_filtrado = df_mov[
     (df_mov["Caja"].isin(cajas)) &
     (df_mov["Cuatrimestre"].isin(cuatrimestres)) &
@@ -80,6 +77,7 @@ df_filtrado = df_mov[
 ]
 
 st.header("Resumen General")
+
 for caja in cajas:
     st.subheader(f"Caja: {caja}")
     resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
@@ -94,22 +92,26 @@ for caja in cajas:
         col2.metric("Gastado", f"${gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         col3.metric("Saldo", f"${saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
+        # Gráfico de barras
         fig, ax = plt.subplots()
         ax.bar(["Gastado", "Saldo"], [gastado, saldo], color=["#ff4b4b", "#4bffa8"])
         ax.set_title(f"Distribución: {caja}")
         st.pyplot(fig)
 
+# Gastos por proveedor
 st.header("Gasto por Proveedor")
 gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
 st.bar_chart(gastos_proveedor)
 
+# Tabla de movimientos con formato de moneda local (separadores de miles y decimales)
 st.header("Movimientos filtrados")
 df_filtrado_display = df_filtrado.copy()
-df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(
-    lambda x: f"${x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+df_filtrado_display["Monto"] = df_filtrado_display.apply(
+    lambda row: f"${row['Monto']:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), axis=1
 )
 st.dataframe(df_filtrado_display)
 
+# Exportar PDF
 def exportar_pdf():
     pdf = FPDF()
     pdf.add_page()
