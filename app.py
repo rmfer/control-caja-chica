@@ -136,8 +136,22 @@ def mostrar_inicio():
     clicked = clickable_images(
         images,
         titles=["Inicio"],
-        div_style={"display": "flex", "justify-content": "center"},
-        img_style={"width": "100vw", "height": "100vh", "object-fit": "cover"},
+        div_style={
+            "display": "flex",
+            "justify-content": "center",
+            "width": "100vw",
+            "height": "100vh",
+            "margin": "0",
+            "padding": "0",
+        },
+        img_style={
+            "width": "100vw",
+            "height": "100vh",
+            "object-fit": "cover",
+            "margin": "0",
+            "padding": "0",
+            "display": "block",
+        },
         key="inicio_img"
     )
     if clicked == 0:
