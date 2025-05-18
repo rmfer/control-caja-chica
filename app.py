@@ -147,8 +147,10 @@ areas_seleccionadas = st.sidebar.multiselect(
 # Definir lista completa de cuatrimestres posibles (ejemplo para 2025)
 cuatrimestres_posibles = ["1er Cuatrimestre", "2do Cuatrimestre", "3er Cuatrimestre", "4to Cuatrimestre"]
 
-# Obtener cuatrimestres que ya existen en df_mov
-cuatrimestres_existentes = sorted(df_mov["Cuatrimestre"].dropna().unique())
+# Obtener cuatrimestres que ya existen en df_mov, limpiando y filtrando
+cuatrimestres_existentes = df_mov["Cuatrimestre"].dropna().astype(str).str.strip()
+cuatrimestres_existentes = [c for c in cuatrimestres_existentes.unique() if c != '']
+cuatrimestres_existentes = sorted(cuatrimestres_existentes)
 
 # Combinar y ordenar (sin duplicados)
 cuatrimestres_totales = sorted(set(cuatrimestres_posibles) | set(cuatrimestres_existentes))
