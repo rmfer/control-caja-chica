@@ -200,6 +200,7 @@ else:
         col2.metric("Consumo", formatear_moneda(consumo))
         col3.metric("Saldo", formatear_moneda(saldo))
 
+    # Mostrar gráfico y tabla solo si hay consumos y una única caja seleccionada
     if len(cajas) == 1 and consumo > 0:
         st.header("Consumo por Proveedor")
         consumo_proveedor = df_consumo_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
@@ -209,5 +210,6 @@ else:
         df_filtrado_display = df_consumo_filtrado.copy()
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
         st.dataframe(df_filtrado_display)
-    else:
+    elif len(cajas) == 1 and consumo == 0:
         st.info("No hay consumos para mostrar en el gráfico ni en la tabla con los filtros actuales.")
+    # Si hay más de una caja seleccionada, no mostrar ni gráfico ni mensaje
