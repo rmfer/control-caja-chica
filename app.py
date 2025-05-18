@@ -127,6 +127,21 @@ proveedor_seleccionado = st.sidebar.multiselect(
     default=proveedores_filtrados
 )
 
+# --- FILTRAR ÁREAS DINÁMICAMENTE SEGÚN CAJAS SELECCIONADAS ---
+
+# Filtrar df_mov solo por cajas seleccionadas para obtener áreas válidas
+df_areas_filtrado = df_mov[df_mov["Caja"].isin(cajas)]
+
+# Extraer todas las áreas únicas de las filas filtradas (recordando que 'Área' es lista)
+areas_disponibles = sorted({area for sublist in df_areas_filtrado['Área'] for area in sublist if area})
+
+# Mostrar filtro de áreas con solo las áreas disponibles
+areas_seleccionadas = st.sidebar.multiselect(
+    "Área",
+    options=areas_disponibles,
+    default=areas_disponibles
+)
+
 # Filtro por cuatrimestres
 cuatrimestres = st.sidebar.multiselect(
     "Cuatrimestre",
@@ -134,20 +149,10 @@ cuatrimestres = st.sidebar.multiselect(
     default=sorted(df_mov["Cuatrimestre"].dropna().unique())
 )
 
-# Filtro por áreas (sectores)
-# Extraer todas las áreas únicas de todas las listas
-areas_unicas = sorted({area for sublist in df_mov['Área'] for area in sublist if area})
-areas_seleccionadas = st.sidebar.multiselect(
-    "Área",
-    options=areas_unicas,
-    default=areas_unicas
-)
-
-# Validar selección cajas
+# --- Aplicar todos los filtros ---
 if not cajas:
     st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
 else:
-    # Aplicar filtros, incluyendo filtro avanzado para áreas múltiples
     df_filtrado = df_mov[
         (df_mov["Caja"].isin(cajas)) &
         (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
