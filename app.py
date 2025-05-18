@@ -50,11 +50,9 @@ def convertir_monto(valor, tipo_caja):
         return 0.0
     texto = str(valor).strip()
     try:
-        if tipo_caja == "Repuestos":
-            texto = re.sub(r'\.', '', texto)
-            texto = texto.replace(',', '.')
-        else:
-            texto = texto.replace(',', '.')
+        # Eliminar puntos usados como separadores de miles y reemplazar coma decimal por punto
+        texto = re.sub(r'\.', '', texto)
+        texto = texto.replace(',', '.')
         return float(texto)
     except ValueError:
         # Sin advertencias, simplemente devolver 0.0 en caso de error
