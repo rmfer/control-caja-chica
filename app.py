@@ -38,7 +38,7 @@ for df in [mov_repuestos, mov_petroleo, df_mov, res_repuestos, res_petroleo, df_
 def convertir_valores(valor):
     try:
         texto = str(valor).strip()
-        texto = texto.replace(".", "").replace(",", ".")
+        texto = texto.replace(".", "").replace(",", ".")  # elimina separador de miles, cambia coma por punto
         return float(texto)
     except:
         return None
@@ -47,12 +47,9 @@ df_res["Monto"] = df_res["Monto"].apply(convertir_valores)
 df_res["Total Gastado"] = df_res["Total Gastado"].apply(convertir_valores)
 df_res["Saldo Actual"] = df_res["Saldo Actual"].apply(convertir_valores)
 
-# --- Función de formato europeo ---
-def formatear_monto(monto):
-    try:
-        return f"$ {monto:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
-    except:
-        return monto
+# Convertir columna Monto en df_mov a float
+df_mov["Monto"] = df_mov["Monto"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+df_mov["Monto"] = pd.to_numeric(df_mov["Monto"], errors="coerce")
 
 # --- Interfaz ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -84,9 +81,9 @@ for caja in cajas:
         pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Disponible", formatear_monto(disponible))
-        col2.metric("Gastado", formatear_monto(gastado))
-        col3.metric("Saldo", formatear_monto(saldo))
+        col1.metric("Disponible", f"€ {disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        col2.metric("Gastado", f"€ {gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        col3.metric("Saldo", f"€ {saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
         # Gráfico de barras
         fig, ax = plt.subplots()
@@ -96,20 +93,14 @@ for caja in cajas:
 
 # --- Gastos por proveedor ---
 st.header("Gasto por Proveedor")
-df_filtrado["Monto"] = df_filtrado["Monto"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
-df_filtrado["Monto"] = pd.to_numeric(df_filtrado["Monto"], errors="coerce")
 gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
 st.bar_chart(gastos_proveedor)
 
 # --- Tabla de movimientos ---
 st.header("Movimientos filtrados")
-df_filtrado["Monto Formateado"] = df_filtrado["Monto"].apply(formatear_monto)
-columnas = list(df_filtrado.columns)
-if "Monto" in columnas and "Monto Formateado" in columnas:
-    columnas.remove("Monto")
-    columnas.insert(columnas.index("Monto Formateado"), "Monto")
-df_mostrar = df_filtrado[columnas]
-st.dataframe(df_mostrar)
+df_tabla = df_filtrado.copy()
+df_tabla["Monto"] = df_tabla["Monto"].apply(lambda x: f"€ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if pd.notna(x) else "")
+st.dataframe(df_tabla)
 
 # --- Exportar a PDF ---
 def exportar_pdf():
@@ -128,15 +119,15 @@ def exportar_pdf():
 
             pdf.ln(10)
             pdf.cell(200, 10, txt=f"Caja: {caja}", ln=1)
-            pdf.cell(200, 10, txt=f"Monto disponible: {formatear_monto(disponible)}", ln=1)
-            pdf.cell(200, 10, txt=f"Total gastado: {formatear_monto(gastado)}", ln=1)
-            pdf.cell(200, 10, txt=f"Saldo restante: {formatear_monto(saldo)}", ln=1)
+            pdf.cell(200, 10, txt=f"Monto disponible: € {disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
+            pdf.cell(200, 10, txt=f"Total gastado: € {gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
+            pdf.cell(200, 10, txt=f"Saldo restante: € {saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
             pdf.cell(200, 10, txt=f"Porcentaje usado: {pct_usado:.2f}%", ln=1)
 
     buffer = BytesIO()
     pdf.output(buffer)
     return buffer
 
-if st.button("\ud83d\udcc4 Descargar resumen en PDF"):
+if st.button("📄 Descargar resumen en PDF"):
     pdf_bytes = exportar_pdf()
     st.download_button("Descargar PDF", data=pdf_bytes.getvalue(), file_name="resumen_cajas.pdf", mime="application/pdf")
