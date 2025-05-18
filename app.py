@@ -30,6 +30,14 @@ res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
+# Limpiar nombres de columnas
+mov_repuestos.columns = mov_repuestos.columns.str.strip()
+mov_petroleo.columns = mov_petroleo.columns.str.strip()
+df_mov.columns = df_mov.columns.str.strip()
+res_repuestos.columns = res_repuestos.columns.str.strip()
+res_petroleo.columns = res_petroleo.columns.str.strip()
+df_res.columns = df_res.columns.str.strip()
+
 # --- Interfaz ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 st.title("Control de Cajas Chicas 2025")
@@ -52,6 +60,8 @@ st.header("Resumen General")
 for caja in cajas:
     st.subheader(f"Caja: {caja}")
     resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
+
+    st.write("Columnas disponibles:", resumen.columns.tolist())
 
     if not resumen.empty:
         disponible = resumen["Monto"].sum()
