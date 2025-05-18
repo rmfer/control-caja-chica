@@ -40,22 +40,24 @@ def convertir_monto_petroleo(valor):
 def convertir_monto_repuestos(valor):
     try:
         texto = str(valor).strip()
-        if texto.count(",") == 1 and texto.count(".") > 1:
-            texto = texto.replace(".", "").replace(",", ".")
-        elif texto.count(",") == 0 and texto.count(".") > 1:
-            texto = texto.replace(".", "")
-        elif texto.count(",") == 1 and texto.count(".") == 0:
-            texto = texto.replace(",", ".")
+        # Quitar puntos como separador de miles y cambiar coma decimal por punto
+        texto = texto.replace(".", "").replace(",", ".")
         return float(texto)
     except:
         return 0.0
 
-# Aplicar limpieza
+# Aplicar limpieza en resúmenes
 for col in ["Monto", "Total Gastado", "Saldo Actual"]:
     if col in res_repuestos.columns:
         res_repuestos[col] = res_repuestos[col].apply(convertir_monto_repuestos)
     if col in res_petroleo.columns:
         res_petroleo[col] = res_petroleo[col].apply(convertir_monto_petroleo)
+
+# Aplicar limpieza en movimientos
+if "Monto" in mov_repuestos.columns:
+    mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(convertir_monto_repuestos)
+if "Monto" in mov_petroleo.columns:
+    mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(convertir_monto_petroleo)
 
 # Agregar columna Caja
 mov_repuestos["Caja"] = "Repuestos"
@@ -66,21 +68,6 @@ res_petroleo["Caja"] = "Petróleo"
 # Concatenar movimientos y resúmenes
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
-
-# Limpiar columnas df_mov
-df_mov.columns = df_mov.columns.str.strip()
-
-# Convertir montos en df_mov a float (tratando separadores)
-def limpiar_monto_mov(valor):
-    try:
-        texto = str(valor).strip()
-        texto = texto.replace(".", "").replace(",", ".")
-        return float(texto)
-    except:
-        return 0.0
-
-if "Monto" in df_mov.columns:
-    df_mov["Monto"] = df_mov["Monto"].apply(limpiar_monto_mov)
 
 # --- Interfaz ---
 st.title("Control de Cajas Chicas 2025")
