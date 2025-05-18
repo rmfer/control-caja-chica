@@ -6,15 +6,21 @@ from oauth2client.service_account import ServiceAccountCredentials
 from fpdf import FPDF
 from io import BytesIO
 
-# --- Función para formatear números estilo europeo (6.076.994,30)
-def formatear_numero(numero):
-    if pd.isna(numero):
-        return "0,00"
-    entero = int(numero)
-    decimales = abs(numero - entero)
-    entero_str = f"{entero:,}".replace(",", ".")
-    decimales_str = f"{decimales:.2f}"[1:].replace(".", ",")
-    return entero_str + decimales_str
+# --- Función para limpiar valores con formato europeo ---
+def limpiar_valor_europeo(valor):
+    if pd.isna(valor):
+        return 0.0
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).strip()
+    if '.' in texto and ',' in texto:
+        texto = texto.replace('.', '').replace(',', '.')
+    elif ',' in texto:
+        texto = texto.replace(',', '.')
+    try:
+        return float(texto)
+    except:
+        return 0.0
 
 # --- Autenticación con Google Sheets ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -44,23 +50,21 @@ df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 for df in [mov_repuestos, mov_petroleo, df_mov, res_repuestos, res_petroleo, df_res]:
     df.columns = df.columns.str.strip()
 
-# Limpiar y convertir valores numéricos en df_res
-def convertir_valores(valor):
-    try:
-        texto = str(valor).strip()
-        texto = texto.replace(".", "").replace(",", ".")  # elimina separador de miles, cambia coma por punto
-        return float(texto)
-    except:
-        return None
+# --- Aplicar limpieza de valores con formato europeo en df_res ---
+df_res["Monto"] = df_res.apply(
+    lambda row: limpiar_valor_europeo(row["Monto"]), axis=1
+)
+df_res["Total Gastado"] = df_res.apply(
+    lambda row: limpiar_valor_europeo(row["Total Gastado"]), axis=1
+)
+df_res["Saldo Actual"] = df_res.apply(
+    lambda row: limpiar_valor_europeo(row["Saldo Actual"]), axis=1
+)
 
-df_res["Monto"] = df_res["Monto"].apply(convertir_valores)
-df_res["Total Gastado"] = df_res["Total Gastado"].apply(convertir_valores)
-df_res["Saldo Actual"] = df_res["Saldo Actual"].apply(convertir_valores)
-
-# Convertir a float (por seguridad)
-df_res["Monto"] = pd.to_numeric(df_res["Monto"], errors="coerce")
-df_res["Total Gastado"] = pd.to_numeric(df_res["Total Gastado"], errors="coerce")
-df_res["Saldo Actual"] = pd.to_numeric(df_res["Saldo Actual"], errors="coerce")
+# --- Aplicar limpieza a df_mov ---
+df_mov["Monto"] = df_mov.apply(
+    lambda row: limpiar_valor_europeo(row["Monto"]), axis=1
+)
 
 # --- Interfaz ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -79,17 +83,6 @@ df_filtrado = df_mov[
     (df_mov["Proveedor"].isin(proveedores))
 ]
 
-# Convertir Monto en df_filtrado a float, limpiando formato si es necesario
-def limpiar_monto(valor):
-    try:
-        texto = str(valor).strip()
-        texto = texto.replace(".", "").replace(",", ".")
-        return float(texto)
-    except:
-        return 0
-
-df_filtrado["Monto"] = df_filtrado["Monto"].apply(limpiar_monto)
-
 st.header("Resumen General")
 
 for caja in cajas:
@@ -103,9 +96,9 @@ for caja in cajas:
         pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Disponible", f"$ {formatear_numero(disponible)}")
-        col2.metric("Gastado", f"$ {formatear_numero(gastado)}")
-        col3.metric("Saldo", f"$ {formatear_numero(saldo)}")
+        col1.metric("Disponible", f"${disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        col2.metric("Gastado", f"${gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        col3.metric("Saldo", f"${saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
         # Gráfico de barras
         fig, ax = plt.subplots()
@@ -115,17 +108,16 @@ for caja in cajas:
 
 # --- Gastos por proveedor ---
 st.header("Gasto por Proveedor")
-
 gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
-gastos_proveedor_fmt = gastos_proveedor.apply(formatear_numero)
 st.bar_chart(gastos_proveedor)
 
 # --- Tabla de movimientos ---
 st.header("Movimientos filtrados")
-
-# Formatear columna "Monto" para mostrarla con separadores y coma decimal en la tabla
+# Formatear la columna "Monto" para que se vea con formato europeo en la tabla
 df_filtrado_display = df_filtrado.copy()
-df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_numero)
+df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(
+    lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+)
 st.dataframe(df_filtrado_display)
 
 # --- Exportar a PDF ---
@@ -145,9 +137,9 @@ def exportar_pdf():
 
             pdf.ln(10)
             pdf.cell(200, 10, txt=f"Caja: {caja}", ln=1)
-            pdf.cell(200, 10, txt=f"Monto disponible: $ {formatear_numero(disponible)}", ln=1)
-            pdf.cell(200, 10, txt=f"Total gastado: $ {formatear_numero(gastado)}", ln=1)
-            pdf.cell(200, 10, txt=f"Saldo restante: $ {formatear_numero(saldo)}", ln=1)
+            pdf.cell(200, 10, txt=f"Monto disponible: ${disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
+            pdf.cell(200, 10, txt=f"Total gastado: ${gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
+            pdf.cell(200, 10, txt=f"Saldo restante: ${saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
             pdf.cell(200, 10, txt=f"Porcentaje usado: {pct_usado:.2f}%", ln=1)
 
     buffer = BytesIO()
