@@ -142,25 +142,48 @@ areas_seleccionadas = st.sidebar.multiselect(
     default=areas_disponibles
 )
 
-# --- FILTRO DE CUATRIMESTRE CON OPCIONES FUTURAS ---
+# --- FILTRO DE CUATRIMESTRE CON OPCIONES FUTURAS Y FORMATO NUMÉRICO ---
 
-# Definir lista completa de cuatrimestres posibles (ejemplo para 2025)
-cuatrimestres_posibles = ["1er Cuatrimestre", "2do Cuatrimestre", "3er Cuatrimestre", "4to Cuatrimestre"]
-
-# Obtener cuatrimestres que ya existen en df_mov, limpiando y filtrando
+# Obtener cuatrimestres existentes en df_mov
 cuatrimestres_existentes = df_mov["Cuatrimestre"].dropna().astype(str).str.strip()
 cuatrimestres_existentes = [c for c in cuatrimestres_existentes.unique() if c != '']
 cuatrimestres_existentes = sorted(cuatrimestres_existentes)
 
-# Combinar y ordenar (sin duplicados)
-cuatrimestres_totales = sorted(set(cuatrimestres_posibles) | set(cuatrimestres_existentes))
+# Mapeo número <-> nombre
+cuatrimestre_map = {
+    1: "1er Cuatrimestre",
+    2: "2do Cuatrimestre",
+    3: "3er Cuatrimestre",
+    4: "4to Cuatrimestre"
+}
 
-# Filtro cuatrimestres
-cuatrimestres = st.sidebar.multiselect(
+def nombre_a_numero(nombre):
+    for num, nom in cuatrimestre_map.items():
+        if nombre == nom:
+            return num
+    return None
+
+cuatrimestres_existentes_numeros = []
+for c in cuatrimestres_existentes:
+    num = nombre_a_numero(c)
+    if num is not None:
+        cuatrimestres_existentes_numeros.append(num)
+
+cuatrimestres_existentes_numeros = sorted(set(cuatrimestres_existentes_numeros))
+
+cuatrimestres_posibles = [1, 2, 3, 4]
+
+cuatrimestres_totales = sorted(set(cuatrimestres_posibles) | set(cuatrimestres_existentes_numeros))
+
+cuatrimestres_seleccionados = st.sidebar.multiselect(
     "Cuatrimestre",
     options=cuatrimestres_totales,
-    default=cuatrimestres_existentes if cuatrimestres_existentes else cuatrimestres_posibles
+    default=cuatrimestres_existentes_numeros if cuatrimestres_existentes_numeros else cuatrimestres_posibles,
+    format_func=lambda x: str(x)
 )
+
+# Convertir números seleccionados a nombres completos para filtrar
+cuatrimestres_filtrar = [cuatrimestre_map[num] for num in cuatrimestres_seleccionados]
 
 # --- Aplicar todos los filtros ---
 if not cajas:
@@ -169,14 +192,14 @@ else:
     # Filtrar resumen por cajas y cuatrimestres seleccionados
     resumen_filtrado = df_res[
         (df_res["Caja"].isin(cajas)) &
-        (df_res["Cuatrimestre"].isin(cuatrimestres))
+        (df_res["Cuatrimestre"].isin(cuatrimestres_filtrar))
     ]
 
     # Filtrar movimientos para calcular gastado
     df_gastos_filtrado = df_mov[
         (df_mov["Caja"].isin(cajas)) &
         (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
-        (df_mov["Cuatrimestre"].isin(cuatrimestres)) &
+        (df_mov["Cuatrimestre"].isin(cuatrimestres_filtrar)) &
         (df_mov["Área"].apply(lambda areas: any(area in areas for area in areas_seleccionadas)))
     ]
 
