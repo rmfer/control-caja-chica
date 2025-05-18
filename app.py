@@ -7,6 +7,9 @@ import re
 import plotly.graph_objects as go
 import time
 
+# Import st.switch_page para navegación programática
+from streamlit import switch_page
+
 # --- Configuración de la página ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 
@@ -269,7 +272,7 @@ if st.session_state.pagina == "inicio":
     if st.session_state.inicio_timestamp is None:
         st.session_state.inicio_timestamp = time.time()
     elif time.time() - st.session_state.inicio_timestamp > 1:  # 1 segundo
-        st.session_state.pagina = "filtros"
-        st.experimental_rerun()
+        # Cambiar página usando st.switch_page para multipágina
+        switch_page("Filtros")  # Asegúrate que tu página de filtros se llama exactamente "Filtros"
 elif st.session_state.pagina == "filtros":
     mostrar_filtros()
