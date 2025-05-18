@@ -13,8 +13,8 @@ st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 # Inicializar variable de estado para controlar la página
 if "pagina" not in st.session_state:
     st.session_state.pagina = "inicio"
-if "inicio_mostrado" not in st.session_state:
-    st.session_state.inicio_mostrado = False
+if "inicio_timestamp" not in st.session_state:
+    st.session_state.inicio_timestamp = None
 
 def cargar_hoja(nombre_hoja):
     try:
@@ -120,12 +120,6 @@ def mostrar_inicio():
         """,
         unsafe_allow_html=True,
     )
-    # Solo hacer la espera y cambio una vez para evitar bucle infinito
-    if not st.session_state.inicio_mostrado:
-        st.session_state.inicio_mostrado = True
-        time.sleep(3)  # Espera 3 segundos
-        st.session_state.pagina = "filtros"
-        st.experimental_rerun()
 
 def mostrar_filtros():
     st.title("Control de Cajas Chicas 2025")
@@ -272,5 +266,10 @@ def mostrar_filtros():
 # --- Lógica principal ---
 if st.session_state.pagina == "inicio":
     mostrar_inicio()
+    if st.session_state.inicio_timestamp is None:
+        st.session_state.inicio_timestamp = time.time()
+    elif time.time() - st.session_state.inicio_timestamp > 3:
+        st.session_state.pagina = "filtros"
+        st.experimental_rerun()
 elif st.session_state.pagina == "filtros":
     mostrar_filtros()
