@@ -8,6 +8,9 @@ from io import BytesIO
 import locale
 import re
 
+# --- Configuración de la página: debe ir primero ---
+st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
+
 # Configurar locale para formateo de moneda (ajusta según tu sistema)
 try:
     locale.setlocale(locale.LC_ALL, 'es_AR.UTF-8')
@@ -102,7 +105,7 @@ if "Caja" not in mov_repuestos.columns:
 if "Caja" not in mov_petroleo.columns:
     mov_petroleo["Caja"] = "Petróleo"
 
-# Agregar columna 'Caja' en resúmenes **antes** de validar
+# Agregar columna 'Caja' en resúmenes antes de validar
 res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
 
@@ -129,7 +132,6 @@ df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 st.title("Control de Cajas Chicas 2025")
 
 # Filtros
