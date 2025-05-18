@@ -242,6 +242,11 @@ else:
 
         st.header("Movimientos filtrados")
         df_filtrado_display = df_consumo_filtrado.copy()
+
+        # Eliminar columna 'Caja' si existe
+        if 'Caja' in df_filtrado_display.columns:
+            df_filtrado_display = df_filtrado_display.drop(columns=['Caja'])
+
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
         st.dataframe(df_filtrado_display)
     elif len(cajas) == 1 and consumo == 0:
