@@ -146,7 +146,7 @@ df_filtrado = df_mov[
     (df_mov["Cuatrimestre"].isin(cuatrimestres))
 ]
 
-st.header("Resumen General")
+# Aquí se eliminó la línea: st.header("Resumen General")
 
 for caja in cajas:
     st.subheader(f"Caja: {caja}")
