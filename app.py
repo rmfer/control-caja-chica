@@ -141,7 +141,6 @@ proveedor_seleccionado = st.sidebar.multiselect(
 )
 
 # --- FILTRAR ÁREAS DINÁMICAMENTE SEGÚN CAJAS SELECCIONADAS ---
-
 df_areas_filtrado = df_mov[df_mov["Caja"].isin(cajas)]
 
 areas_disponibles = sorted({area for sublist in df_areas_filtrado['Área'] for area in sublist if area})
@@ -152,18 +151,31 @@ areas_seleccionadas = st.sidebar.multiselect(
     default=areas_disponibles
 )
 
-# --- FILTRO DE CUATRIMESTRE NORMALIZADO ---
-
+# --- FILTRO DE CUATRIMESTRE NORMALIZADO CON SELECCIÓN DEL ÚLTIMO REGISTRADO ---
 cuatrimestres_posibles = ['1', '2', '3', '4']
 
 cuatrimestres_existentes = df_mov['Cuatrimestre'].dropna().unique().tolist()
 
+cuatrimestres_numericos = []
+for c in cuatrimestres_existentes:
+    try:
+        cuatrimestres_numericos.append(int(c))
+    except ValueError:
+        pass
+
+ultimo_cuatrimestre = max(cuatrimestres_numericos) if cuatrimestres_numericos else None
+
 cuatrimestres_totales = sorted(set(cuatrimestres_posibles) | set(cuatrimestres_existentes))
+
+if ultimo_cuatrimestre is not None and str(ultimo_cuatrimestre) in cuatrimestres_totales:
+    default_cuatrimestre = [str(ultimo_cuatrimestre)]
+else:
+    default_cuatrimestre = cuatrimestres_totales
 
 cuatrimestres_seleccionados = st.sidebar.multiselect(
     "Cuatrimestre",
     options=cuatrimestres_totales,
-    default=cuatrimestres_existentes if cuatrimestres_existentes else cuatrimestres_posibles
+    default=default_cuatrimestre
 )
 
 # --- Aplicar todos los filtros ---
