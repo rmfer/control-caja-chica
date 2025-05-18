@@ -6,22 +6,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 from fpdf import FPDF
 from io import BytesIO
 
-# --- Función para limpiar valores con formato europeo ---
-def limpiar_valor_europeo(valor):
-    if pd.isna(valor):
-        return 0.0
-    if isinstance(valor, (int, float)):
-        return float(valor)
-    texto = str(valor).strip()
-    if '.' in texto and ',' in texto:
-        texto = texto.replace('.', '').replace(',', '.')
-    elif ',' in texto:
-        texto = texto.replace(',', '.')
-    try:
-        return float(texto)
-    except:
-        return 0.0
-
 # --- Autenticación con Google Sheets ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(
@@ -50,21 +34,64 @@ df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 for df in [mov_repuestos, mov_petroleo, df_mov, res_repuestos, res_petroleo, df_res]:
     df.columns = df.columns.str.strip()
 
-# --- Aplicar limpieza de valores con formato europeo en df_res ---
-df_res["Monto"] = df_res.apply(
-    lambda row: limpiar_valor_europeo(row["Monto"]), axis=1
-)
-df_res["Total Gastado"] = df_res.apply(
-    lambda row: limpiar_valor_europeo(row["Total Gastado"]), axis=1
-)
-df_res["Saldo Actual"] = df_res.apply(
-    lambda row: limpiar_valor_europeo(row["Saldo Actual"]), axis=1
-)
+# --- Funciones para limpiar valores numéricos según caja ---
+def limpiar_valor_repuestos(valor):
+    if pd.isna(valor):
+        return 0.0
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).strip()
+    texto = texto.replace('.', '').replace(',', '.')
+    try:
+        return float(texto)
+    except:
+        return 0.0
 
-# --- Aplicar limpieza a df_mov ---
-df_mov["Monto"] = df_mov.apply(
-    lambda row: limpiar_valor_europeo(row["Monto"]), axis=1
-)
+def limpiar_valor_petroleo(valor):
+    if pd.isna(valor):
+        return 0.0
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).strip()
+    texto = texto.replace(',', '')  # por si hay miles con coma, eliminarlos
+    try:
+        return float(texto)
+    except:
+        return 0.0
+
+# Limpiar columna "Monto" en df_mov según caja
+def limpiar_monto(row):
+    if row['Caja'] == 'Repuestos':
+        return limpiar_valor_repuestos(row['Monto'])
+    elif row['Caja'] == 'Petróleo':
+        return limpiar_valor_petroleo(row['Monto'])
+    else:
+        return 0.0
+
+df_mov['Monto'] = df_mov.apply(limpiar_monto, axis=1)
+
+# Limpiar columnas numéricas en df_res según caja
+def limpiar_resumen(row):
+    if row['Caja'] == 'Repuestos':
+        return (
+            limpiar_valor_repuestos(row['Monto']),
+            limpiar_valor_repuestos(row['Total Gastado']),
+            limpiar_valor_repuestos(row['Saldo Actual']),
+        )
+    elif row['Caja'] == 'Petróleo':
+        return (
+            limpiar_valor_petroleo(row['Monto']),
+            limpiar_valor_petroleo(row['Total Gastado']),
+            limpiar_valor_petroleo(row['Saldo Actual']),
+        )
+    else:
+        return (0.0, 0.0, 0.0)
+
+limpios = df_res.apply(limpiar_resumen, axis=1, result_type='expand')
+limpios.columns = ['Monto_clean', 'Total Gastado_clean', 'Saldo Actual_clean']
+df_res['Monto'] = limpios['Monto_clean']
+df_res['Total Gastado'] = limpios['Total Gastado_clean']
+df_res['Saldo Actual'] = limpios['Saldo Actual_clean']
 
 # --- Interfaz ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -96,9 +123,9 @@ for caja in cajas:
         pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Disponible", f"${disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        col2.metric("Gastado", f"${gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        col3.metric("Saldo", f"${saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        col1.metric("Disponible", f"${disponible:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+        col2.metric("Gastado", f"${gastado:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+        col3.metric("Saldo", f"${saldo:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
 
         # Gráfico de barras
         fig, ax = plt.subplots()
@@ -113,11 +140,11 @@ st.bar_chart(gastos_proveedor)
 
 # --- Tabla de movimientos ---
 st.header("Movimientos filtrados")
-# Formatear la columna "Monto" para que se vea con formato europeo en la tabla
+
+# Mostrar montos con formato europeo en la tabla:
 df_filtrado_display = df_filtrado.copy()
-df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(
-    lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-)
+df_filtrado_display['Monto'] = df_filtrado_display['Monto'].apply(lambda x: f"{x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+
 st.dataframe(df_filtrado_display)
 
 # --- Exportar a PDF ---
@@ -137,9 +164,9 @@ def exportar_pdf():
 
             pdf.ln(10)
             pdf.cell(200, 10, txt=f"Caja: {caja}", ln=1)
-            pdf.cell(200, 10, txt=f"Monto disponible: ${disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
-            pdf.cell(200, 10, txt=f"Total gastado: ${gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
-            pdf.cell(200, 10, txt=f"Saldo restante: ${saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=1)
+            pdf.cell(200, 10, txt=f"Monto disponible: ${str(round(disponible,2)).replace('.', ',')}", ln=1)
+            pdf.cell(200, 10, txt=f"Total gastado: ${str(round(gastado,2)).replace('.', ',')}", ln=1)
+            pdf.cell(200, 10, txt=f"Saldo restante: ${str(round(saldo,2)).replace('.', ',')}", ln=1)
             pdf.cell(200, 10, txt=f"Porcentaje usado: {pct_usado:.2f}%", ln=1)
 
     buffer = BytesIO()
