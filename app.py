@@ -5,6 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import locale
 import re
 import plotly.graph_objects as go
+from st_clickable_images import clickable_images
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -107,23 +108,10 @@ df_res['Cuatrimestre'] = df_res['Cuatrimestre'].apply(normalizar_cuatrimestre)
 # Procesar la columna 'Área' para convertir cadenas separadas por comas en listas sin comillas
 df_mov['Área'] = df_mov['Área'].fillna('').apply(lambda x: [area.strip() for area in x.split(',')] if x else [])
 
-# --- CSS para imagen fullscreen y título fijo ---
+# --- CSS para título fijo sobre imagen ---
 st.markdown(
     """
     <style>
-    /* Eliminar padding y margen para usar toda la pantalla */
-    .css-18e3th9 {
-        padding: 0 !important;
-        margin: 0 !important;
-    }
-    /* Imagen fullscreen */
-    .fullscreen-image img {
-        width: 100vw;
-        height: 100vh;
-        object-fit: cover;
-        display: block;
-    }
-    /* Título fijo sobre la imagen */
     .fixed-title {
         position: fixed;
         top: 20px;
@@ -136,32 +124,29 @@ st.markdown(
         z-index: 9999;
         user-select: none;
     }
-    /* Botón centrado debajo de la imagen */
-    .button-container {
-        position: fixed;
-        top: 80vh;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 9999;
-    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 def mostrar_inicio():
+    images = [
+        "https://raw.githubusercontent.com/rmfer/control-caja-chica/main/inicio.jpg"
+    ]
+    clicked = clickable_images(
+        images,
+        titles=["Inicio"],
+        div_style={"display": "flex", "justify-content": "center"},
+        img_style={"width": "100vw", "height": "100vh", "object-fit": "cover"},
+        key="inicio_img"
+    )
+    if clicked == 0:
+        st.session_state.pagina = "filtros"
+
     st.markdown(
-        '''
-        <div class="fullscreen-image">
-            <img src="https://raw.githubusercontent.com/rmfer/control-caja-chica/main/inicio.jpg" alt="Inicio">
-        </div>
-        <div class="fixed-title">¡Bienvenido a Control de Cajas Chicas 2025!</div>
-        ''',
+        '<div class="fixed-title">¡Bienvenido a Control de Cajas Chicas 2025!</div>',
         unsafe_allow_html=True,
     )
-    # Botón con contenedor para posicionarlo fijo
-    if st.button("Ir a filtros", key="btn_inicio"):
-        st.session_state.pagina = "filtros"
 
 def mostrar_filtros():
     st.title("Control de Cajas Chicas 2025")
@@ -305,6 +290,7 @@ def mostrar_filtros():
         elif len(cajas) == 1 and consumo == 0:
             st.info("No hay consumos para mostrar en el gráfico ni en la tabla con los filtros actuales.")
 
+# --- Lógica principal ---
 if st.session_state.pagina == "inicio":
     mostrar_inicio()
 elif st.session_state.pagina == "filtros":
