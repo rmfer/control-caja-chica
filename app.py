@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import locale
@@ -167,7 +168,11 @@ else:
             # Gráfico de barras con etiquetas
             fig, ax = plt.subplots()
             barras = ax.bar(["Gastado", "Saldo"], [gastado, saldo], color=["#ff4b4b", "#4bffa8"])
-            # ax.set_title(f"Distribución: {caja}")  # Título eliminado según solicitud
+
+            # Desactivar notación científica y usar separadores de miles en eje Y
+            ax.get_yaxis().get_major_formatter().set_scientific(False)
+            ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}'))
+
             for barra in barras:
                 altura = barra.get_height()
                 ax.annotate(formatear_moneda(altura),
