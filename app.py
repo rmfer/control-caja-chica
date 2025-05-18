@@ -38,6 +38,11 @@ res_repuestos.columns = res_repuestos.columns.str.strip()
 res_petroleo.columns = res_petroleo.columns.str.strip()
 df_res.columns = df_res.columns.str.strip()
 
+# Convertir columnas numéricas
+df_res["Monto"] = pd.to_numeric(df_res["Monto"], errors="coerce")
+df_res["Total Gastado"] = pd.to_numeric(df_res["Total Gastado"], errors="coerce")
+df_res["Saldo Actual"] = pd.to_numeric(df_res["Saldo Actual"], errors="coerce")
+
 # --- Interfaz ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 st.title("Control de Cajas Chicas 2025")
@@ -67,7 +72,7 @@ for caja in cajas:
         disponible = resumen["Monto"].sum()
         gastado = resumen["Total Gastado"].sum()
         saldo = resumen["Saldo Actual"].sum()
-        pct_usado = (gastado / disponible) * 100 if disponible > 0 else 0
+        pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Disponible", f"${disponible:,.2f}")
@@ -82,6 +87,7 @@ for caja in cajas:
 
 # --- Gastos por proveedor ---
 st.header("Gasto por Proveedor")
+df_filtrado["Monto"] = pd.to_numeric(df_filtrado["Monto"], errors="coerce")
 gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
 st.bar_chart(gastos_proveedor)
 
@@ -102,7 +108,7 @@ def exportar_pdf():
             disponible = resumen["Monto"].sum()
             gastado = resumen["Total Gastado"].sum()
             saldo = resumen["Saldo Actual"].sum()
-            pct_usado = (gastado / disponible) * 100 if disponible > 0 else 0
+            pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
 
             pdf.ln(10)
             pdf.cell(200, 10, txt=f"Caja: {caja}", ln=1)
