@@ -7,10 +7,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 import locale
 import re
 
-# --- Configuración de la página: debe ir primero ---
+# --- Configuración de la página ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 
-# Configurar locale para formateo de moneda (ajusta según tu sistema)
+# Configurar locale para formateo de moneda (ajustar según sistema)
 try:
     locale.setlocale(locale.LC_ALL, 'es_AR.UTF-8')
 except locale.Error:
@@ -26,7 +26,6 @@ client = gspread.authorize(credentials)
 sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 
 # --- Funciones ---
-
 @st.cache_data(ttl=3600)
 def cargar_hoja(nombre_hoja):
     try:
@@ -150,27 +149,28 @@ else:
             col2.metric("Gastado", formatear_moneda(gastado))
             col3.metric("Saldo", formatear_moneda(saldo))
 
-            # Tamaño gráfico reducido (1.25, 0.75)
-            fig, ax = plt.subplots(figsize=(1.25, 0.75))
+            # Tamaño gráfico compacto con buena legibilidad
+            fig, ax = plt.subplots(figsize=(2.5, 1.5), dpi=150)
             barras = ax.bar(["Gastado", "Saldo"], [gastado, saldo], color=["#ff4b4b", "#4bffa8"])
 
             ax.get_yaxis().get_major_formatter().set_scientific(False)
             ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}'))
 
-            # Reducir tamaño de fuente de ticks a 1.25 pt (aprox 1/4 del tamaño típico)
-            ax.tick_params(axis='both', labelsize=1.25)
+            ax.tick_params(axis='both', labelsize=8)  # Tamaño legible para ticks
 
             for barra in barras:
                 altura = barra.get_height()
                 ax.annotate(
                     formatear_moneda(altura),
                     xy=(barra.get_x() + barra.get_width() / 2, altura),
-                    xytext=(0, 3),
+                    xytext=(0, 5),
                     textcoords="offset points",
                     ha='center',
                     va='bottom',
-                    fontsize=1.25  # Tamaño de fuente muy pequeño para anotaciones
+                    fontsize=8,
+                    fontweight='bold'
                 )
+            plt.tight_layout()
             st.pyplot(fig)
         else:
             st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
