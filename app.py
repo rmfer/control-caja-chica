@@ -181,8 +181,8 @@ else:
         (df_res["Cuatrimestre"].isin(cuatrimestres_seleccionados))
     ]
 
-    # Filtrar movimientos para calcular gastado
-    df_gastos_filtrado = df_mov[
+    # Filtrar movimientos para calcular consumo
+    df_consumo_filtrado = df_mov[
         (df_mov["Caja"].isin(cajas)) &
         (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
         (df_mov["Cuatrimestre"].isin(cuatrimestres_seleccionados)) &
@@ -192,26 +192,31 @@ else:
     # Mostrar métricas por caja
     for caja in cajas:
         st.subheader(f"Caja: {caja}")
+
+        # Leyenda Anual Asignado: total disponible asignado para la caja (sin filtrar cuatrimestre)
+        asignado_anual = df_res[df_res["Caja"] == caja]["Monto"].sum()
+        st.markdown(f"**Anual Asignado:** {formatear_moneda(asignado_anual)}")
+
         resumen_caja = resumen_filtrado[resumen_filtrado["Caja"] == caja]
 
         disponible = resumen_caja["Monto"].sum() if not resumen_caja.empty else 0.0
         saldo = resumen_caja["Saldo Actual"].sum() if not resumen_caja.empty else 0.0
 
-        gastado = df_gastos_filtrado[df_gastos_filtrado["Caja"] == caja]["Monto"].sum() if not df_gastos_filtrado.empty else 0.0
+        consumo = df_consumo_filtrado[df_consumo_filtrado["Caja"] == caja]["Monto"].sum() if not df_consumo_filtrado.empty else 0.0
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Disponible", formatear_moneda(disponible))
-        col2.metric("Gastado", formatear_moneda(gastado))
+        col2.metric("Consumo", formatear_moneda(consumo))  # Cambiado "Gastado" por "Consumo"
         col3.metric("Saldo", formatear_moneda(saldo))
 
     # Mostrar gráfico y tabla solo si hay consumos y una única caja seleccionada
-    if len(cajas) == 1 and gastado > 0:
-        st.header("Gasto por Proveedor")
-        gastos_proveedor = df_gastos_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
-        st.bar_chart(gastos_proveedor)
+    if len(cajas) == 1 and consumo > 0:
+        st.header("Consumo por Proveedor")  # Cambiado título aquí
+        consumo_proveedor = df_consumo_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
+        st.bar_chart(consumo_proveedor)
 
         st.header("Movimientos filtrados")
-        df_filtrado_display = df_gastos_filtrado.copy()
+        df_filtrado_display = df_consumo_filtrado.copy()
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
         st.dataframe(df_filtrado_display)
     else:
