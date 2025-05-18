@@ -150,15 +150,15 @@ else:
             col2.metric("Gastado", formatear_moneda(gastado))
             col3.metric("Saldo", formatear_moneda(saldo))
 
-            # Tamaño reducido a la mitad nuevamente (1.25, 0.75)
+            # Tamaño gráfico reducido (1.25, 0.75)
             fig, ax = plt.subplots(figsize=(1.25, 0.75))
             barras = ax.bar(["Gastado", "Saldo"], [gastado, saldo], color=["#ff4b4b", "#4bffa8"])
 
             ax.get_yaxis().get_major_formatter().set_scientific(False)
             ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}'))
 
-            # Reducir tamaño de fuente de ticks
-            ax.tick_params(axis='both', labelsize=5)
+            # Reducir tamaño de fuente de ticks a 1.25 pt (aprox 1/4 del tamaño típico)
+            ax.tick_params(axis='both', labelsize=1.25)
 
             for barra in barras:
                 altura = barra.get_height()
@@ -169,7 +169,7 @@ else:
                     textcoords="offset points",
                     ha='center',
                     va='bottom',
-                    fontsize=5  # Tamaño más pequeño para las anotaciones
+                    fontsize=1.25  # Tamaño de fuente muy pequeño para anotaciones
                 )
             st.pyplot(fig)
         else:
