@@ -182,4 +182,16 @@ else:
     # Gastos por proveedor
     st.header("Gasto por Proveedor")
     if not df_filtrado.empty:
-        gastos_proveedor = df_filtrado.groupby("Proveedor
+        gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
+        st.bar_chart(gastos_proveedor)
+    else:
+        st.info("No hay movimientos para los filtros seleccionados.")
+
+    # Tabla de movimientos con formato de moneda local
+    st.header("Movimientos filtrados")
+    if not df_filtrado.empty:
+        df_filtrado_display = df_filtrado.copy()
+        df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
+        st.dataframe(df_filtrado_display)
+    else:
+        st.info("No hay movimientos para mostrar con los filtros actuales.")
