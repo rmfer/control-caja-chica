@@ -69,7 +69,7 @@ def obtener_proveedores(df):
 def filtrar_datos(df, cuatri, proveedor):
     df_filtered = df.copy()
     if "Cuatrimestre" in df_filtered.columns:
-        df_filtered["Cuatrimestre"] = pd.to_numeric(df_filtered["Cuatrimestre"], errors='coerce')
+        df_filtered.loc[:, "Cuatrimestre"] = pd.to_numeric(df_filtered["Cuatrimestre"], errors='coerce')
         df_filtered = df_filtered[df_filtered["Cuatrimestre"] == cuatri]
     if proveedor != "Todos" and "Proveedor" in df_filtered.columns:
         df_filtered = df_filtered[df_filtered["Proveedor"] == proveedor]
@@ -120,7 +120,8 @@ st.sidebar.markdown("---")
 
 if st.sidebar.button("🔄 Actualizar Datos desde Google Sheets"):
     st.cache_data.clear()
-    st.rerun()
+    st.experimental_memo.clear()
+    st.experimental_rerun()
 
 # =========================
 # Filtrado y Validación de Datos
@@ -145,7 +146,7 @@ st.caption(f"Cuatrimestre {cuatri_sel} | Proveedor: {proveedor_sel}")
 if not df_filtrado.empty:
     df_display = df_filtrado.copy()
     # Conversión de columna 'Monto' a numérico para cálculos y formato
-    df_display["Monto"] = pd.to_numeric(df_display["Monto"], errors="coerce")
+    df_display["Monto"] = pd.to_numeric(df_display["Monto"], errors="coerce").fillna(0)
     st.dataframe(
         df_display.style.format({"Monto": "ARS ${:,.2f}"}),
         use_container_width=True,
