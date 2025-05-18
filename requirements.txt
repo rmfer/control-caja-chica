@@ -1,7 +1,7 @@
 streamlit
-pandas
 gspread
-oauth2client
 gspread-dataframe
+pandas
+google-auth
 matplotlib
-reportlab
+fpdf2
