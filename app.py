@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import locale
@@ -142,36 +140,11 @@ else:
             disponible = resumen["Monto"].sum()
             gastado = resumen["Total Gastado"].sum()
             saldo = resumen["Saldo Actual"].sum()
-            pct_usado = (gastado / disponible) * 100 if disponible > 0 else 0
 
             col1, col2, col3 = st.columns(3)
             col1.metric("Disponible", formatear_moneda(disponible))
             col2.metric("Gastado", formatear_moneda(gastado))
             col3.metric("Saldo", formatear_moneda(saldo))
-
-            # Tamaño gráfico compacto con buena legibilidad
-            fig, ax = plt.subplots(figsize=(2.5, 1.5), dpi=150)
-            barras = ax.bar(["Gastado", "Saldo"], [gastado, saldo], color=["#ff4b4b", "#4bffa8"])
-
-            ax.get_yaxis().get_major_formatter().set_scientific(False)
-            ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}'))
-
-            ax.tick_params(axis='both', labelsize=8)  # Tamaño legible para ticks
-
-            for barra in barras:
-                altura = barra.get_height()
-                ax.annotate(
-                    formatear_moneda(altura),
-                    xy=(barra.get_x() + barra.get_width() / 2, altura),
-                    xytext=(0, 5),
-                    textcoords="offset points",
-                    ha='center',
-                    va='bottom',
-                    fontsize=8,
-                    fontweight='bold'
-                )
-            plt.tight_layout()
-            st.pyplot(fig)
         else:
             st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
 
