@@ -107,14 +107,51 @@ df_res['Cuatrimestre'] = df_res['Cuatrimestre'].apply(normalizar_cuatrimestre)
 # Procesar la columna 'Área' para convertir cadenas separadas por comas en listas sin comillas
 df_mov['Área'] = df_mov['Área'].fillna('').apply(lambda x: [area.strip() for area in x.split(',')] if x else [])
 
-# --- Función para mostrar pantalla de inicio ---
+# --- CSS para quitar padding/margin y que la imagen ocupe toda la ventana ---
+st.markdown(
+    """
+    <style>
+    /* Eliminar márgenes y padding para usar toda la pantalla */
+    .css-18e3th9 {
+        padding-top: 0rem;
+        padding-bottom: 0rem;
+        padding-left: 0rem;
+        padding-right: 0rem;
+        margin: 0;
+    }
+    .css-1d391kg {
+        padding: 0;
+        margin: 0;
+    }
+    /* Imagen fullscreen */
+    .fullscreen-image > img {
+        width: 100vw;
+        height: 100vh;
+        object-fit: cover;
+        margin: 0;
+        padding: 0;
+        display: block;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# --- Función para mostrar pantalla de inicio con imagen fullscreen ---
 def mostrar_inicio():
     st.title("¡Bienvenido a Control de Cajas Chicas 2025!")
-    st.image("https://raw.githubusercontent.com/rmfer/control-caja-chica/main/inicio.jpg", use_container_width=True)
+    st.markdown(
+        f'''
+        <div class="fullscreen-image">
+            <img src="https://raw.githubusercontent.com/rmfer/control-caja-chica/main/inicio.jpg" alt="Inicio">
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
     if st.button("Ir a filtros"):
         st.session_state.pagina = "filtros"
 
-# --- Función para mostrar filtros y datos (sin botón volver a inicio) ---
+# --- Función para mostrar filtros y datos ---
 def mostrar_filtros():
     st.title("Control de Cajas Chicas 2025")
 
