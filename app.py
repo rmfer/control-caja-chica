@@ -5,19 +5,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from fpdf import FPDF
 from io import BytesIO
-import locale
-
-# --- Configurar formato regional argentino ---
-try:
-    locale.setlocale(locale.LC_ALL, 'es_AR.UTF-8')
-except:
-    locale.setlocale(locale.LC_ALL, 'es_ES.UTF-8')
-
-def formatear_moneda(valor):
-    try:
-        return locale.currency(valor, grouping=True)
-    except:
-        return "-"
 
 # --- Autenticación con Google Sheets ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -47,7 +34,7 @@ df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 for df in [mov_repuestos, mov_petroleo, df_mov, res_repuestos, res_petroleo, df_res]:
     df.columns = df.columns.str.strip()
 
-# --- Convertir textos con formato a números ---
+# Limpiar y convertir valores numéricos en df_res
 def convertir_valores(valor):
     try:
         texto = str(valor).strip()
@@ -56,8 +43,13 @@ def convertir_valores(valor):
     except:
         return None
 
-for col in ["Monto", "Total Gastado", "Saldo Actual"]:
-    df_res[col] = df_res[col].apply(convertir_valores)
+df_res["Monto"] = df_res["Monto"].apply(convertir_valores)
+df_res["Total Gastado"] = df_res["Total Gastado"].apply(convertir_valores)
+df_res["Saldo Actual"] = df_res["Saldo Actual"].apply(convertir_valores)
+
+# Convertir y limpiar columna Monto en df_mov
+df_mov["Monto"] = df_mov["Monto"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+df_mov["Monto"] = pd.to_numeric(df_mov["Monto"], errors="coerce")
 
 # --- Interfaz ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -76,10 +68,6 @@ df_filtrado = df_mov[
     (df_mov["Proveedor"].isin(proveedores))
 ]
 
-# Convertir Monto a número
-df_filtrado["Monto"] = df_filtrado["Monto"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
-df_filtrado["Monto"] = pd.to_numeric(df_filtrado["Monto"], errors="coerce")
-
 st.header("Resumen General")
 
 for caja in cajas:
@@ -90,4 +78,6 @@ for caja in cajas:
         disponible = resumen["Monto"].sum()
         gastado = resumen["Total Gastado"].sum()
         saldo = resumen["Saldo Actual"].sum()
-        pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else*_
+        pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
+
+        col1,
