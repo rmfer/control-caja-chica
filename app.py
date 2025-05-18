@@ -107,66 +107,76 @@ df_res['Cuatrimestre'] = df_res['Cuatrimestre'].apply(normalizar_cuatrimestre)
 # Procesar la columna 'Área' para convertir cadenas separadas por comas en listas sin comillas
 df_mov['Área'] = df_mov['Área'].fillna('').apply(lambda x: [area.strip() for area in x.split(',')] if x else [])
 
-# --- CSS para imagen fullscreen sin scroll ---
+# --- CSS para imagen fullscreen y título fijo ---
 st.markdown(
     """
     <style>
-    /* Quitar padding/margin para usar toda la pantalla */
+    /* Eliminar padding y margen para usar toda la pantalla */
     .css-18e3th9 {
         padding: 0 !important;
         margin: 0 !important;
     }
-    /* Imagen fullscreen ajustada */
-    .fullscreen-image > img {
+    /* Imagen fullscreen */
+    .fullscreen-image img {
         width: 100vw;
         height: 100vh;
         object-fit: cover;
-        margin: 0;
-        padding: 0;
         display: block;
     }
-    /* Quitar margen del título para que no provoque scroll */
-    .css-1v3fvcr h1 {
-        margin: 0 !important;
-        padding: 0 !important;
+    /* Título fijo sobre la imagen */
+    .fixed-title {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: white;
+        font-size: 3rem;
+        font-weight: bold;
+        text-shadow: 2px 2px 6px rgba(0,0,0,0.7);
+        z-index: 9999;
+        user-select: none;
+    }
+    /* Botón centrado debajo de la imagen */
+    .button-container {
+        position: fixed;
+        top: 80vh;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# --- Función para mostrar pantalla de inicio ---
 def mostrar_inicio():
-    # No usar st.title para evitar scroll
     st.markdown(
         '''
         <div class="fullscreen-image">
             <img src="https://raw.githubusercontent.com/rmfer/control-caja-chica/main/inicio.jpg" alt="Inicio">
         </div>
+        <div class="fixed-title">¡Bienvenido a Control de Cajas Chicas 2025!</div>
         ''',
         unsafe_allow_html=True,
     )
-    if st.button("Ir a filtros"):
+    # Botón con contenedor para posicionarlo fijo
+    if st.button("Ir a filtros", key="btn_inicio"):
         st.session_state.pagina = "filtros"
 
-# --- Función para mostrar filtros y datos ---
 def mostrar_filtros():
     st.title("Control de Cajas Chicas 2025")
 
     st.sidebar.header("Filtros")
 
-    # Filtro por cajas
     cajas = st.sidebar.multiselect(
         "Caja",
         options=sorted(df_mov["Caja"].unique()),
         default=sorted(df_mov["Caja"].unique())
     )
 
-    # Mostrar "¡Bienvenido!" solo si ambas cajas están seleccionadas
     if set(cajas) == {"Repuestos", "Petróleo"}:
         st.title("¡Bienvenido!")
 
-    # Filtrar proveedores según cajas seleccionadas
     proveedores_repuestos = mov_repuestos["Proveedor"].dropna().unique().tolist()
     proveedores_petroleo = mov_petroleo["Proveedor"].dropna().unique().tolist()
 
@@ -184,7 +194,6 @@ def mostrar_filtros():
         default=proveedores_filtrados
     )
 
-    # --- FILTRAR ÁREAS DINÁMICAMENTE SEGÚN CAJAS SELECCIONADAS ---
     df_areas_filtrado = df_mov[df_mov["Caja"].isin(cajas)]
 
     areas_disponibles = sorted({area for sublist in df_areas_filtrado['Área'] for area in sublist if area})
@@ -195,7 +204,6 @@ def mostrar_filtros():
         default=areas_disponibles
     )
 
-    # --- FILTRO DE CUATRIMESTRE NORMALIZADO CON SELECCIÓN DEL ÚLTIMO REGISTRADO ---
     cuatrimestres_posibles = ['1', '2', '3', '4']
 
     cuatrimestres_existentes = df_mov['Cuatrimestre'].dropna().unique().tolist()
@@ -222,7 +230,6 @@ def mostrar_filtros():
         default=default_cuatrimestre
     )
 
-    # --- Aplicar todos los filtros ---
     if not cajas:
         st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
     else:
@@ -256,12 +263,10 @@ def mostrar_filtros():
             col2.metric("Consumo", formatear_moneda(consumo))
             col3.metric("Saldo", formatear_moneda(saldo))
 
-        # Mostrar gráfico y tabla solo si hay consumos y una única caja seleccionada
         if len(cajas) == 1 and consumo > 0:
             st.header("Consumo por Proveedor")
             consumo_proveedor = df_consumo_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
 
-            # Crear gráfico Plotly de barras con tamaño fijo y sin zoom ni selección
             fig = go.Figure(data=[
                 go.Bar(
                     x=consumo_proveedor.index,
@@ -300,7 +305,6 @@ def mostrar_filtros():
         elif len(cajas) == 1 and consumo == 0:
             st.info("No hay consumos para mostrar en el gráfico ni en la tabla con los filtros actuales.")
 
-# --- Lógica principal ---
 if st.session_state.pagina == "inicio":
     mostrar_inicio()
 elif st.session_state.pagina == "filtros":
