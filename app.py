@@ -150,20 +150,27 @@ else:
             col2.metric("Gastado", formatear_moneda(gastado))
             col3.metric("Saldo", formatear_moneda(saldo))
 
-            # Tamaño reducido a la mitad: (2.5, 1.5)
-            fig, ax = plt.subplots(figsize=(2.5, 1.5))
+            # Tamaño reducido a la mitad nuevamente (1.25, 0.75)
+            fig, ax = plt.subplots(figsize=(1.25, 0.75))
             barras = ax.bar(["Gastado", "Saldo"], [gastado, saldo], color=["#ff4b4b", "#4bffa8"])
 
             ax.get_yaxis().get_major_formatter().set_scientific(False)
             ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.0f}'))
 
+            # Reducir tamaño de fuente de ticks
+            ax.tick_params(axis='both', labelsize=5)
+
             for barra in barras:
                 altura = barra.get_height()
-                ax.annotate(formatear_moneda(altura),
-                            xy=(barra.get_x() + barra.get_width() / 2, altura),
-                            xytext=(0, 5),
-                            textcoords="offset points",
-                            ha='center', va='bottom')
+                ax.annotate(
+                    formatear_moneda(altura),
+                    xy=(barra.get_x() + barra.get_width() / 2, altura),
+                    xytext=(0, 3),
+                    textcoords="offset points",
+                    ha='center',
+                    va='bottom',
+                    fontsize=5  # Tamaño más pequeño para las anotaciones
+                )
             st.pyplot(fig)
         else:
             st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
