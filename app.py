@@ -4,6 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import locale
 import re
+import plotly.graph_objects as go  # Importar Plotly Graph Objects
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -216,7 +217,28 @@ else:
     if len(cajas) == 1 and consumo > 0:
         st.header("Consumo por Proveedor")
         consumo_proveedor = df_consumo_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
-        st.bar_chart(consumo_proveedor)
+
+        # Crear gráfico Plotly de barras con tamaño fijo y sin zoom ni selección
+        fig = go.Figure(data=[
+            go.Bar(
+                x=consumo_proveedor.index,
+                y=consumo_proveedor.values,
+                marker_color='steelblue'
+            )
+        ])
+
+        fig.update_layout(
+            width=800,  # ancho fijo en píxeles
+            height=400,  # alto fijo en píxeles
+            margin=dict(l=40, r=40, t=40, b=40),
+            dragmode=False,  # deshabilita drag (zoom, pan)
+            xaxis=dict(fixedrange=True),  # deshabilita zoom en eje x
+            yaxis=dict(fixedrange=True),  # deshabilita zoom en eje y
+            xaxis_title="Proveedor",
+            yaxis_title="Consumo"
+        )
+
+        st.plotly_chart(fig, use_container_width=False)
 
         st.header("Movimientos filtrados")
         df_filtrado_display = df_consumo_filtrado.copy()
