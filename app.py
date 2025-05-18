@@ -6,7 +6,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from fpdf import FPDF
 from io import BytesIO
 
-# --- Autenticación con Google Sheets ---
+# --- Autenticación ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(
     st.secrets["google_service_account"], scope
@@ -16,12 +16,19 @@ client = gspread.authorize(credentials)
 sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 
 # --- Cargar hojas ---
-mov_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Repuestos").get_all_records())
-res_repuestos = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Repuestos").get_all_records())
-mov_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Movimientos Petróleo").get_all_records())
-res_petroleo = pd.DataFrame(client.open_by_key(sheet_id).worksheet("Resumen Petróleo").get_all_records())
+ws_repuestos = client.open_by_key(sheet_id).worksheet("Movimientos Repuestos")
+mov_repuestos = pd.DataFrame(ws_repuestos.get_all_records())
 
-# --- Añadir columna "Caja" ---
+ws_petroleo = client.open_by_key(sheet_id).worksheet("Movimientos Petróleo")
+mov_petroleo = pd.DataFrame(ws_petroleo.get_all_records())
+
+ws_res_repuestos = client.open_by_key(sheet_id).worksheet("Resumen Repuestos")
+res_repuestos = pd.DataFrame(ws_res_repuestos.get_all_records())
+
+ws_res_petroleo = client.open_by_key(sheet_id).worksheet("Resumen Petróleo")
+res_petroleo = pd.DataFrame(ws_res_petroleo.get_all_records())
+
+# --- Añadir columna "Caja" para diferenciarlos ---
 mov_repuestos["Caja"] = "Repuestos"
 mov_petroleo["Caja"] = "Petróleo"
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
@@ -30,39 +37,49 @@ res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
-# --- Limpiar nombres de columnas ---
-for df in [mov_repuestos, mov_petroleo, df_mov, res_repuestos, res_petroleo, df_res]:
+# --- Limpiar nombres columnas ---
+for df in [df_mov, df_res]:
     df.columns = df.columns.str.strip()
 
-# --- Funciones de limpieza de valores numéricos según caja ---
-def limpiar_valor_repuestos(valor):
-    # Repuestos usa formato con punto como miles y coma decimal
+# --- Funciones para limpiar montos ---
+def limpiar_monto_repuestos(valor):
     try:
         texto = str(valor).strip()
+        # Quitar puntos de miles y cambiar coma por punto decimal
         texto = texto.replace(".", "").replace(",", ".")
         return float(texto)
     except:
-        return None
+        return 0.0
 
-def limpiar_valor_petroleo(valor):
-    # Petróleo usa formato con coma como miles y punto decimal
+def limpiar_monto_petroleo(valor):
     try:
         texto = str(valor).strip()
+        # Quitar comas de miles, punto decimal queda igual
         texto = texto.replace(",", "")
         return float(texto)
     except:
-        return None
+        return 0.0
 
-# --- Aplicar limpieza a df_res según la caja ---
+# --- Aplicar limpieza para df_res ---
 for col in ["Monto", "Total Gastado", "Saldo Actual"]:
-    # Para Repuestos
     mask_repuestos = df_res["Caja"] == "Repuestos"
-    df_res.loc[mask_repuestos, col] = df_res.loc[mask_repuestos, col].apply(limpiar_valor_repuestos)
-    # Para Petróleo
-    mask_petroleo = df_res["Caja"] == "Petróleo"
-    df_res.loc[mask_petroleo, col] = df_res.loc[mask_petroleo, col].apply(limpiar_valor_petroleo)
+    df_res.loc[mask_repuestos, col] = df_res.loc[mask_repuestos, col].apply(limpiar_monto_repuestos)
 
-# --- Interfaz ---
+    mask_petroleo = df_res["Caja"] == "Petróleo"
+    df_res.loc[mask_petroleo, col] = df_res.loc[mask_petroleo, col].apply(limpiar_monto_petroleo)
+
+# --- Aplicar limpieza para df_mov en columna Monto ---
+def limpiar_monto_mov(row):
+    if row["Caja"] == "Repuestos":
+        return limpiar_monto_repuestos(row["Monto"])
+    elif row["Caja"] == "Petróleo":
+        return limpiar_monto_petroleo(row["Monto"])
+    else:
+        return 0.0
+
+df_mov["Monto"] = df_mov.apply(limpiar_monto_mov, axis=1)
+
+# --- Interfaz Streamlit ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 st.title("Control de Cajas Chicas 2025")
 
@@ -79,42 +96,22 @@ df_filtrado = df_mov[
     (df_mov["Proveedor"].isin(proveedores))
 ]
 
-# Convertir 'Monto' en df_filtrado a float, limpiando puntos y comas para cada caja
-def limpiar_monto_filtros(row):
-    valor = str(row["Monto"]).strip()
-    if row["Caja"] == "Repuestos":
-        try:
-            valor = valor.replace(".", "").replace(",", ".")
-            return float(valor)
-        except:
-            return None
-    elif row["Caja"] == "Petróleo":
-        try:
-            valor = valor.replace(",", "")
-            return float(valor)
-        except:
-            return None
-    else:
-        return None
-
-df_filtrado["Monto"] = df_filtrado.apply(limpiar_monto_filtros, axis=1)
-
-# Mostrar resumen
+# --- Mostrar resumen por caja ---
 st.header("Resumen General")
+
 for caja in cajas:
     resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
     if not resumen.empty:
         disponible = resumen["Monto"].sum()
         gastado = resumen["Total Gastado"].sum()
         saldo = resumen["Saldo Actual"].sum()
-        pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
+        pct_usado = (gastado / disponible) * 100 if disponible > 0 else 0
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Disponible", f"${disponible:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         col2.metric("Gastado", f"${gastado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         col3.metric("Saldo", f"${saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
-        # Gráfico de barras
         fig, ax = plt.subplots()
         ax.bar(["Gastado", "Saldo"], [gastado, saldo], color=["#ff4b4b", "#4bffa8"])
         ax.set_title(f"Distribución: {caja}")
@@ -125,24 +122,22 @@ st.header("Gasto por Proveedor")
 gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
 st.bar_chart(gastos_proveedor)
 
-# --- Tabla de movimientos ---
+# --- Tabla movimientos ---
 st.header("Movimientos filtrados")
 
-def formatear_monto_tabla(row):
+def formatear_monto(row):
     try:
-        if pd.isna(row["Monto"]):
-            return ""
-        # Usar formato con punto para miles y coma decimal
-        return f'{row["Monto"]:,.2f}'.replace(",", "X").replace(".", ",").replace("X", ".")
+        valor = row["Monto"]
+        return f'{valor:,.2f}'.replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return row["Monto"]
 
 df_filtrado_display = df_filtrado.copy()
-df_filtrado_display["Monto"] = df_filtrado_display.apply(formatear_monto_tabla, axis=1)
+df_filtrado_display["Monto"] = df_filtrado_display.apply(formatear_monto, axis=1)
 
 st.dataframe(df_filtrado_display)
 
-# --- Exportar a PDF ---
+# --- Exportar PDF ---
 def exportar_pdf():
     pdf = FPDF()
     pdf.add_page()
@@ -155,7 +150,7 @@ def exportar_pdf():
             disponible = resumen["Monto"].sum()
             gastado = resumen["Total Gastado"].sum()
             saldo = resumen["Saldo Actual"].sum()
-            pct_usado = (gastado / disponible) * 100 if pd.notna(disponible) and disponible > 0 else 0
+            pct_usado = (gastado / disponible) * 100 if disponible > 0 else 0
 
             pdf.ln(10)
             pdf.cell(200, 10, txt=f"Caja: {caja}", ln=1)
