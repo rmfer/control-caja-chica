@@ -31,14 +31,15 @@ res_petroleo["Caja"] = "Petróleo"
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
 # Limpiar nombres de columnas
-mov_repuestos.columns = mov_repuestos.columns.str.strip()
-mov_petroleo.columns = mov_petroleo.columns.str.strip()
-df_mov.columns = df_mov.columns.str.strip()
-res_repuestos.columns = res_repuestos.columns.str.strip()
-res_petroleo.columns = res_petroleo.columns.str.strip()
-df_res.columns = df_res.columns.str.strip()
+for df in [mov_repuestos, mov_petroleo, df_mov, res_repuestos, res_petroleo, df_res]:
+    df.columns = df.columns.str.strip()
 
-# Convertir columnas numéricas
+# Limpiar y convertir valores numéricos en df_res
+df_res["Monto"] = df_res["Monto"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+df_res["Total Gastado"] = df_res["Total Gastado"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+df_res["Saldo Actual"] = df_res["Saldo Actual"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+
+# Convertir a float
 df_res["Monto"] = pd.to_numeric(df_res["Monto"], errors="coerce")
 df_res["Total Gastado"] = pd.to_numeric(df_res["Total Gastado"], errors="coerce")
 df_res["Saldo Actual"] = pd.to_numeric(df_res["Saldo Actual"], errors="coerce")
@@ -66,8 +67,6 @@ for caja in cajas:
     st.subheader(f"Caja: {caja}")
     resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
 
-    st.write("Columnas disponibles:", resumen.columns.tolist())
-
     if not resumen.empty:
         disponible = resumen["Monto"].sum()
         gastado = resumen["Total Gastado"].sum()
@@ -87,6 +86,7 @@ for caja in cajas:
 
 # --- Gastos por proveedor ---
 st.header("Gasto por Proveedor")
+df_filtrado["Monto"] = df_filtrado["Monto"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
 df_filtrado["Monto"] = pd.to_numeric(df_filtrado["Monto"], errors="coerce")
 gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
 st.bar_chart(gastos_proveedor)
