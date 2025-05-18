@@ -1,22 +1,17 @@
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
 import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from gspread_dataframe import get_as_dataframe
 import matplotlib.pyplot as plt
-from io import BytesIO
-from fpdf import FPDF
 
-# Configuración página
-st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
+# Configuración inicial
+st.set_page_config(page_title="Control de Caja Chica", layout="wide")
 
-# Credenciales Google desde Streamlit secrets
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-service_account_info = st.secrets["gcp_service_account"]
-creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
-client = gspread.authorize(creds)
-
-# Parámetros constantes
+# Nombre de la planilla
 NOMBRE_PLANILLA = "iacajas2025"
+
+# Nombres de hojas
 HOJAS = {
     "Movimientos Repuestos": "Movimientos Repuestos",
     "Resumen Repuestos": "Resumen Repuestos",
@@ -24,149 +19,72 @@ HOJAS = {
     "Resumen Petróleo": "Resumen Petróleo"
 }
 
-# Función para cargar hoja y devolver DataFrame
-@st.cache_data(ttl=600)
-def cargar_hoja(worksheet_name):
-    sheet = client.open(NOMBRE_PLANILLA)
-    worksheet = sheet.worksheet(worksheet_name)
-    data = worksheet.get_all_records()
-    return pd.DataFrame(data)
-
-# Funciones para limpiar y convertir montos
-def limpiar_monto_repuestos(monto_str):
-    if pd.isna(monto_str) or monto_str == "":
-        return 0.0
-    monto_str = monto_str.replace(".", "").replace(",", ".")
-    try:
-        return float(monto_str)
-    except:
-        return 0.0
-
-def limpiar_monto_petroleo(monto_str):
-    if pd.isna(monto_str) or monto_str == "":
-        return 0.0
-    monto_str = monto_str.replace(",", "")
-    try:
-        return float(monto_str)
-    except:
-        return 0.0
-
-# Cargar datos
-df_mov_repuestos = cargar_hoja(HOJAS["Movimientos Repuestos"])
-df_res_repuestos = cargar_hoja(HOJAS["Resumen Repuestos"])
-df_mov_petroleo = cargar_hoja(HOJAS["Movimientos Petróleo"])
-df_res_petroleo = cargar_hoja(HOJAS["Resumen Petróleo"])
-
-# Limpiar montos
-if "Monto" in df_mov_repuestos.columns:
-    df_mov_repuestos["Monto"] = df_mov_repuestos["Monto"].apply(limpiar_monto_repuestos)
-if "Monto" in df_mov_petroleo.columns:
-    df_mov_petroleo["Monto"] = df_mov_petroleo["Monto"].apply(limpiar_monto_petroleo)
-
-# Título
-st.title("Control de Cajas Chicas 2025")
-
-# Selección caja
-caja = st.selectbox("Selecciona la caja chica:", ["Repuestos", "Petróleo"])
-
-# Selección cuatrimestre
-df_mov = df_mov_repuestos.copy() if caja == "Repuestos" else df_mov_petroleo.copy()
-df_res = df_res_repuestos.copy() if caja == "Repuestos" else df_res_petroleo.copy()
-
-cuatrimestres = df_mov["Cuatrimestre"].unique()
-cuatrimestre_seleccionado = st.selectbox("Selecciona cuatrimestre:", sorted(cuatrimestres))
-df_mov_filtrado = df_mov[df_mov["Cuatrimestre"] == cuatrimestre_seleccionado]
-
-# Resumen
-if "Saldo Actual" in df_res.columns and "Cuatrimestre" in df_res.columns:
-    saldo_actual = df_res.loc[df_res["Cuatrimestre"] == cuatrimestre_seleccionado, "Saldo Actual"].values
-    total_gastado = df_res.loc[df_res["Cuatrimestre"] == cuatrimestre_seleccionado, "Total Gastado"].values
-    monto_total = df_res.loc[df_res["Cuatrimestre"] == cuatrimestre_seleccionado, "Monto"].values
-else:
-    saldo_actual = [0]
-    total_gastado = [0]
-    monto_total = [0]
-
-st.subheader(f"Resumen {caja} - Cuatrimestre {cuatrimestre_seleccionado}")
-st.markdown(f"- **Monto Total:** ${monto_total[0]:,.2f}")
-st.markdown(f"- **Total Gastado:** ${total_gastado[0]:,.2f}")
-st.markdown(f"- **Saldo Actual:** ${saldo_actual[0]:,.2f}")
-
-# Tabla movimientos
-st.subheader(f"Movimientos {caja} - Cuatrimestre {cuatrimestre_seleccionado}")
-st.dataframe(df_mov_filtrado)
-
-# Gráfico gastos por proveedor
-st.subheader("Gastos por Proveedor")
-
-if "Proveedor" in df_mov_filtrado.columns and "Monto" in df_mov_filtrado.columns:
-    gastos_proveedor = df_mov_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
-    fig, ax = plt.subplots(figsize=(10, 5))
-    gastos_proveedor.plot(kind="bar", ax=ax)
-    ax.set_ylabel("Monto")
-    ax.set_title(f"Gastos por Proveedor - {caja} - {cuatrimestre_seleccionado}")
-    st.pyplot(fig)
-else:
-    st.write("No hay datos de proveedor o monto para mostrar.")
-
-# --- Exportar PDF ---
-def generar_pdf(resumen, df_movimientos, fig, caja, cuatrimestre):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, f"Resumen {caja} - Cuatrimestre {cuatrimestre}", ln=True, align="C")
-
-    pdf.set_font("Arial", "", 12)
-    pdf.ln(5)
-    pdf.cell(0, 10, f"Monto Total: ${resumen['Monto Total']:,.2f}", ln=True)
-    pdf.cell(0, 10, f"Total Gastado: ${resumen['Total Gastado']:,.2f}", ln=True)
-    pdf.cell(0, 10, f"Saldo Actual: ${resumen['Saldo Actual']:,.2f}", ln=True)
-
-    pdf.ln(10)
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Movimientos:", ln=True)
-    pdf.set_font("Arial", "", 10)
-
-    # Tabla movimientos simplificada en PDF
-    col_width = pdf.epw / len(df_movimientos.columns)  # Equal column width
-    row_height = 6
-
-    # Headers
-    for col_name in df_movimientos.columns:
-        pdf.cell(col_width, row_height, str(col_name), border=1)
-    pdf.ln(row_height)
-
-    # Rows (limitar a 20 filas para no llenar mucho)
-    for i, row in df_movimientos.head(20).iterrows():
-        for item in row:
-            txt = str(item)
-            if len(txt) > 15:
-                txt = txt[:12] + "..."
-            pdf.cell(col_width, row_height, txt, border=1)
-        pdf.ln(row_height)
-
-    # Agregar gráfico como imagen PNG en memoria
-    img_bytes = BytesIO()
-    fig.savefig(img_bytes, format='PNG')
-    img_bytes.seek(0)
-    pdf.add_page()
-    pdf.image(img_bytes, x=10, y=20, w=pdf.epw*0.9)
-
-    return pdf.output(dest='S').encode('latin1')
-
-# Botón para descargar PDF
-if st.button("Exportar resumen y movimientos a PDF"):
-    resumen_dict = {
-        "Monto Total": monto_total[0],
-        "Total Gastado": total_gastado[0],
-        "Saldo Actual": saldo_actual[0]
-    }
-
-    pdf_bytes = generar_pdf(resumen_dict, df_mov_filtrado, fig, caja, cuatrimestre_seleccionado)
-
-    st.download_button(
-        label="Descargar PDF",
-        data=pdf_bytes,
-        file_name=f"Resumen_{caja}_{cuatrimestre_seleccionado}.pdf",
-        mime="application/pdf"
+# Autenticación con Google Sheets desde st.secrets
+@st.cache_resource
+def autenticar_google():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(
+        st.secrets["gcp_service_account"], scopes=scope
     )
+    client = gspread.authorize(creds)
+    return client
+
+# Cargar hoja de cálculo
+@st.cache_data
+def cargar_hoja(nombre_hoja):
+    client = autenticar_google()
+    sheet = client.open(NOMBRE_PLANILLA).worksheet(nombre_hoja)
+    df = get_as_dataframe(sheet, evaluate_formulas=True)
+    df = df.dropna(how="all")  # Eliminar filas completamente vacías
+    return df
+
+# Título principal
+st.title("📊 Control de Caja Chica 2025")
+
+# Cargar hojas
+df_mov_repuestos = cargar_hoja(HOJAS["Movimientos Repuestos"])
+df_resumen_repuestos = cargar_hoja(HOJAS["Resumen Repuestos"])
+df_mov_petroleo = cargar_hoja(HOJAS["Movimientos Petróleo"])
+df_resumen_petroleo = cargar_hoja(HOJAS["Resumen Petróleo"])
+
+# Mostrar resumen de cada caja
+st.subheader("Resumen General")
+col1, col2 = st.columns(2)
+
+with col1:
+    st.metric("💡 Repuestos - Saldo Actual", f"$ {df_resumen_repuestos['Saldo Actual'].iloc[-1]:,.2f}")
+    st.metric("🔧 Repuestos - Total Gastado", f"$ {df_resumen_repuestos['Total Gastado'].iloc[-1]:,.2f}")
+
+with col2:
+    st.metric("⛽ Petróleo - Saldo Actual", f"$ {df_resumen_petroleo['Saldo Actual'].iloc[-1]:,.2f}")
+    st.metric("🧾 Petróleo - Total Gastado", f"$ {df_resumen_petroleo['Total Gastado'].iloc[-1]:,.2f}")
+
+# Filtro por cuatrimestre y proveedor
+st.subheader("🔎 Filtro de Movimientos")
+cuatrimestre = st.selectbox("Seleccionar cuatrimestre", sorted(df_mov_repuestos["Cuatrimestre"].dropna().unique()))
+proveedor = st.selectbox("Seleccionar proveedor", sorted(df_mov_repuestos["Proveedor"].dropna().unique()))
+
+# Filtros aplicados
+df_filtro_rep = df_mov_repuestos[
+    (df_mov_repuestos["Cuatrimestre"] == cuatrimestre) &
+    (df_mov_repuestos["Proveedor"] == proveedor)
+]
+
+df_filtro_pet = df_mov_petroleo[
+    (df_mov_petroleo["Cuatrimestre"] == cuatrimestre) &
+    (df_mov_petroleo["Proveedor"] == proveedor)
+]
+
+# Mostrar resultados
+st.subheader("🧾 Movimientos Filtrados")
+st.write("### Repuestos")
+st.dataframe(df_filtro_rep)
+st.write("### Petróleo")
+st.dataframe(df_filtro_pet)
+
+# Gráfico simple (opcional)
+st.subheader("📈 Consumo por proveedor (Repuestos)")
+fig, ax = plt.subplots()
+df_mov_repuestos.groupby("Proveedor")["Monto"].sum().plot(kind="bar", ax=ax)
+ax.set_ylabel("Monto Total")
+st.pyplot(fig)
