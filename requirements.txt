@@ -1,9 +1,7 @@
 streamlit
-pandas
 gspread
-oauth2client
+google-auth
+pandas
 matplotlib
-seaborn
-plotly
 fpdf
 
