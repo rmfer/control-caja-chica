@@ -268,7 +268,7 @@ if st.session_state.pagina == "inicio":
     mostrar_inicio()
     if st.session_state.inicio_timestamp is None:
         st.session_state.inicio_timestamp = time.time()
-    elif time.time() - st.session_state.inicio_timestamp > 3:
+    elif time.time() - st.session_state.inicio_timestamp > 1:  # 1 segundo
         st.session_state.pagina = "filtros"
         st.experimental_rerun()
 elif st.session_state.pagina == "filtros":
