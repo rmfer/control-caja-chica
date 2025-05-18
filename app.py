@@ -4,6 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import locale
 import re
+import plotly.graph_objects as go  # Importar Plotly Graph Objects
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -41,7 +42,7 @@ def validar_columnas(df, columnas_requeridas):
         st.error(f"Faltan columnas en los datos: {', '.join(faltantes)}")
         st.stop()
 
-def convertir_monto(valor):
+def convertir_monto(valor, tipo_caja):
     if pd.isna(valor):
         return 0.0
     texto = str(valor).strip()
@@ -58,13 +59,22 @@ def formatear_moneda(valor):
     except Exception:
         return f"${valor:,.2f}"
 
+def normalizar_cuatrimestre(valor):
+    if pd.isna(valor):
+        return ''
+    valor_str = str(valor).strip()
+    match = re.match(r'(\d)', valor_str)
+    if match:
+        return match.group(1)
+    return valor_str
+
 # --- Carga de datos ---
 mov_repuestos = cargar_hoja("Movimientos Repuestos")
 mov_petroleo = cargar_hoja("Movimientos Petróleo")
 res_repuestos = cargar_hoja("Resumen Repuestos")
 res_petroleo = cargar_hoja("Resumen Petróleo")
 
-# Añadir columna 'Caja' si no existe
+# Asegurar columna 'Caja'
 if "Caja" not in mov_repuestos.columns:
     mov_repuestos["Caja"] = "Repuestos"
 if "Caja" not in mov_petroleo.columns:
@@ -73,8 +83,8 @@ if "Caja" not in mov_petroleo.columns:
 res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
 
-# Validar columnas requeridas
-columnas_esperadas_mov = ["Monto", "Cuatrimestre", "Proveedor", "Caja"]
+# Columnas esperadas (incluyendo 'Área')
+columnas_esperadas_mov = ["Monto", "Cuatrimestre", "Proveedor", "Caja", "Área"]
 columnas_esperadas_resumen = ["Cuatrimestre", "Monto", "Total Gastado", "Saldo Actual", "Caja"]
 
 for df in [mov_repuestos, mov_petroleo]:
@@ -82,29 +92,42 @@ for df in [mov_repuestos, mov_petroleo]:
 for df in [res_repuestos, res_petroleo]:
     validar_columnas(df, columnas_esperadas_resumen)
 
-# Convertir columnas monetarias a float
-for df in [res_repuestos, res_petroleo]:
-    for col in ["Monto", "Total Gastado", "Saldo Actual"]:
-        df[col] = df[col].apply(convertir_monto)
+# Convertir montos a float
+for col in ["Monto", "Total Gastado", "Saldo Actual"]:
+    res_repuestos[col] = res_repuestos[col].apply(lambda x: convertir_monto(x, "Repuestos"))
+    res_petroleo[col] = res_petroleo[col].apply(lambda x: convertir_monto(x, "Petróleo"))
 
-for df in [mov_repuestos, mov_petroleo]:
-    df["Monto"] = df["Monto"].apply(convertir_monto)
+mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(lambda x: convertir_monto(x, "Repuestos"))
+mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(lambda x: convertir_monto(x, "Petróleo"))
 
-# Concatenar datos
+# Concatenar movimientos
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
+# Normalizar columna Cuatrimestre a valores '1', '2', '3', '4'
+df_mov['Cuatrimestre'] = df_mov['Cuatrimestre'].apply(normalizar_cuatrimestre)
+df_res['Cuatrimestre'] = df_res['Cuatrimestre'].apply(normalizar_cuatrimestre)
+
+# Procesar la columna 'Área' para convertir cadenas separadas por comas en listas sin comillas
+df_mov['Área'] = df_mov['Área'].fillna('').apply(lambda x: [area.strip() for area in x.split(',')] if x else [])
+
 # --- Streamlit UI ---
+
+# Mostrar título principal
 st.title("Control de Cajas Chicas 2025")
 
 st.sidebar.header("Filtros")
 
-# Filtro por caja
+# Filtro por cajas
 cajas = st.sidebar.multiselect(
     "Caja",
     options=sorted(df_mov["Caja"].unique()),
     default=sorted(df_mov["Caja"].unique())
 )
+
+# Mostrar "¡Bienvenido!" solo si ambas cajas están seleccionadas
+if set(cajas) == {"Repuestos", "Petróleo"}:
+    st.title("¡Bienvenido!")
 
 # Filtrar proveedores según cajas seleccionadas
 proveedores_repuestos = mov_repuestos["Proveedor"].dropna().unique().tolist()
@@ -124,55 +147,123 @@ proveedor_seleccionado = st.sidebar.multiselect(
     default=proveedores_filtrados
 )
 
-# Filtro por cuatrimestre
-cuatrimestres = st.sidebar.multiselect(
-    "Cuatrimestre",
-    options=sorted(df_mov["Cuatrimestre"].dropna().unique()),
-    default=sorted(df_mov["Cuatrimestre"].dropna().unique())
+# --- FILTRAR ÁREAS DINÁMICAMENTE SEGÚN CAJAS SELECCIONADAS ---
+df_areas_filtrado = df_mov[df_mov["Caja"].isin(cajas)]
+
+areas_disponibles = sorted({area for sublist in df_areas_filtrado['Área'] for area in sublist if area})
+
+areas_seleccionadas = st.sidebar.multiselect(
+    "Área",
+    options=areas_disponibles,
+    default=areas_disponibles
 )
 
+# --- FILTRO DE CUATRIMESTRE NORMALIZADO CON SELECCIÓN DEL ÚLTIMO REGISTRADO ---
+cuatrimestres_posibles = ['1', '2', '3', '4']
+
+cuatrimestres_existentes = df_mov['Cuatrimestre'].dropna().unique().tolist()
+
+cuatrimestres_numericos = []
+for c in cuatrimestres_existentes:
+    try:
+        cuatrimestres_numericos.append(int(c))
+    except ValueError:
+        pass
+
+ultimo_cuatrimestre = max(cuatrimestres_numericos) if cuatrimestres_numericos else None
+
+cuatrimestres_totales = sorted(set(cuatrimestres_posibles) | set(cuatrimestres_existentes))
+
+if ultimo_cuatrimestre is not None and str(ultimo_cuatrimestre) in cuatrimestres_totales:
+    default_cuatrimestre = [str(ultimo_cuatrimestre)]
+else:
+    default_cuatrimestre = cuatrimestres_totales
+
+cuatrimestres_seleccionados = st.sidebar.multiselect(
+    "Cuatrimestre",
+    options=cuatrimestres_totales,
+    default=default_cuatrimestre
+)
+
+# --- Aplicar todos los filtros ---
 if not cajas:
     st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
 else:
-    # Filtrar datos según selección
-    df_filtrado = df_mov[
-        (df_mov["Caja"].isin(cajas)) &
-        (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
-        (df_mov["Cuatrimestre"].isin(cuatrimestres))
+    resumen_filtrado = df_res[
+        (df_res["Caja"].isin(cajas)) &
+        (df_res["Cuatrimestre"].isin(cuatrimestres_seleccionados))
     ]
 
-    # Mostrar métricas por caja
+    df_consumo_filtrado = df_mov[
+        (df_mov["Caja"].isin(cajas)) &
+        (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
+        (df_mov["Cuatrimestre"].isin(cuatrimestres_seleccionados)) &
+        (df_mov["Área"].apply(lambda areas: any(area in areas for area in areas_seleccionadas)))
+    ]
+
     for caja in cajas:
         st.subheader(f"Caja: {caja}")
-        resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
-        if not resumen.empty:
-            disponible = resumen["Monto"].sum()
-            gastado = resumen["Total Gastado"].sum()
-            saldo = resumen["Saldo Actual"].sum()
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Disponible", formatear_moneda(disponible))
-            col2.metric("Gastado", formatear_moneda(gastado))
-            col3.metric("Saldo", formatear_moneda(saldo))
-        else:
-            st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
+        asignado_anual = df_res[df_res["Caja"] == caja]["Monto"].sum()
+        st.markdown(f"**Anual Asignado:** {formatear_moneda(asignado_anual)}")
 
-    # Gráfico de gasto por proveedor (solo si hay una caja seleccionada)
-    st.header("Gasto por Proveedor")
-    if len(cajas) == 1:
-        if not df_filtrado.empty:
-            gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
-            st.bar_chart(gastos_proveedor)
-        else:
-            st.info("No hay movimientos para los filtros seleccionados.")
-    else:
-        st.info("Selecciona una única caja para visualizar el gráfico de gasto por proveedor.")
+        resumen_caja = resumen_filtrado[resumen_filtrado["Caja"] == caja]
 
-    # Mostrar tabla de movimientos filtrados
-    st.header("Movimientos filtrados")
-    if not df_filtrado.empty:
-        df_filtrado_display = df_filtrado.copy()
+        disponible = resumen_caja["Monto"].sum() if not resumen_caja.empty else 0.0
+        saldo = resumen_caja["Saldo Actual"].sum() if not resumen_caja.empty else 0.0
+
+        consumo = df_consumo_filtrado[df_consumo_filtrado["Caja"] == caja]["Monto"].sum() if not df_consumo_filtrado.empty else 0.0
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Disponible", formatear_moneda(disponible))
+        col2.metric("Consumo", formatear_moneda(consumo))
+        col3.metric("Saldo", formatear_moneda(saldo))
+
+    # Mostrar gráfico y tabla solo si hay consumos y una única caja seleccionada
+    if len(cajas) == 1 and consumo > 0:
+        st.header("Consumo por Proveedor")
+        consumo_proveedor = df_consumo_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
+
+        # Crear gráfico Plotly de barras con tamaño fijo y sin zoom ni selección
+        fig = go.Figure(data=[
+            go.Bar(
+                x=consumo_proveedor.index,
+                y=consumo_proveedor.values,
+                marker_color='steelblue'
+            )
+        ])
+
+        fig.update_layout(
+            width=800,  # ancho fijo en píxeles
+            height=400,  # alto fijo en píxeles
+            margin=dict(l=40, r=40, t=40, b=40),
+            dragmode=False,  # deshabilita drag (zoom, pan)
+            xaxis=dict(fixedrange=True),  # deshabilita zoom en eje x
+            yaxis=dict(fixedrange=True),  # deshabilita zoom en eje y
+            xaxis_title="Proveedor",
+            yaxis_title="Consumo"
+        )
+
+        st.plotly_chart(fig, use_container_width=False)
+
+        st.header("Movimientos filtrados")
+        df_filtrado_display = df_consumo_filtrado.copy()
+
+        # Eliminar columna 'Caja' si existe
+        if 'Caja' in df_filtrado_display.columns:
+            df_filtrado_display = df_filtrado_display.drop(columns=['Caja'])
+
+        # Resetear índice para que no se muestre la columna índice numérica
+        df_filtrado_display = df_filtrado_display.reset_index(drop=True)
+
+        # Convertir listas en 'Área' a texto limpio sin corchetes ni comillas
+        df_filtrado_display['Área'] = df_filtrado_display['Área'].apply(lambda x: ', '.join(x) if isinstance(x, list) else x)
+
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
-        st.dataframe(df_filtrado_display)
-    else:
-        st.info("No hay movimientos para mostrar con los filtros actuales.")
+
+        # Mostrar tabla sin índice visible usando st.table
+        st.table(df_filtrado_display)
+
+    elif len(cajas) == 1 and consumo == 0:
+        st.info("No hay consumos para mostrar en el gráfico ni en la tabla con los filtros actuales.")
+    # Si hay más de una caja seleccionada, no mostrar ni gráfico ni mensaje
