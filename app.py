@@ -5,7 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import locale
 import re
 import plotly.graph_objects as go
-from st_clickable_images import clickable_images
+import time
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -13,6 +13,8 @@ st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 # Inicializar variable de estado para controlar la página
 if "pagina" not in st.session_state:
     st.session_state.pagina = "inicio"
+if "inicio_mostrado" not in st.session_state:
+    st.session_state.inicio_mostrado = False
 
 def cargar_hoja(nombre_hoja):
     try:
@@ -108,59 +110,22 @@ df_res['Cuatrimestre'] = df_res['Cuatrimestre'].apply(normalizar_cuatrimestre)
 # Procesar la columna 'Área' para convertir cadenas separadas por comas en listas sin comillas
 df_mov['Área'] = df_mov['Área'].fillna('').apply(lambda x: [area.strip() for area in x.split(',')] if x else [])
 
-# --- CSS para título fijo sobre imagen ---
-st.markdown(
-    """
-    <style>
-    .fixed-title {
-        position: fixed;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        color: white;
-        font-size: 3rem;
-        font-weight: bold;
-        text-shadow: 2px 2px 6px rgba(0,0,0,0.7);
-        z-index: 9999;
-        user-select: none;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
+# --- Mostrar pantalla de inicio con solo título y redirección automática ---
 def mostrar_inicio():
-    images = [
-        "https://raw.githubusercontent.com/rmfer/control-caja-chica/main/inicio.jpg"
-    ]
-    clicked = clickable_images(
-        images,
-        titles=["Inicio"],
-        div_style={
-            "display": "flex",
-            "justify-content": "center",
-            "width": "100vw",
-            "height": "100vh",
-            "margin": "0",
-            "padding": "0",
-        },
-        img_style={
-            "width": "100vw",
-            "height": "100vh",
-            "object-fit": "cover",
-            "margin": "0",
-            "padding": "0",
-            "display": "block",
-        },
-        key="inicio_img"
-    )
-    if clicked == 0:
-        st.session_state.pagina = "filtros"
-
     st.markdown(
-        '<div class="fixed-title">¡Bienvenido a Control de Cajas Chicas 2025!</div>',
+        """
+        <h1 style="text-align:center; margin-top: 40vh; font-size: 4rem;">
+            ¡Bienvenido a Control de Cajas Chicas 2025!
+        </h1>
+        """,
         unsafe_allow_html=True,
     )
+    # Solo hacer la espera y cambio una vez para evitar bucle infinito
+    if not st.session_state.inicio_mostrado:
+        st.session_state.inicio_mostrado = True
+        time.sleep(3)  # Espera 3 segundos
+        st.session_state.pagina = "filtros"
+        st.experimental_rerun()
 
 def mostrar_filtros():
     st.title("Control de Cajas Chicas 2025")
