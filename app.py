@@ -57,7 +57,7 @@ def convertir_monto(valor, tipo_caja):
             texto = texto.replace(',', '.')
         return float(texto)
     except ValueError:
-        st.warning(f"Valor inválido para monto: '{valor}' en caja {tipo_caja}")
+        # Sin advertencias, simplemente devolver 0.0 en caso de error
         return 0.0
 
 def formatear_moneda(valor):
