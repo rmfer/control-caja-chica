@@ -35,7 +35,18 @@ for df in [mov_repuestos, mov_petroleo, df_mov, res_repuestos, res_petroleo, df_
     df.columns = df.columns.str.strip()
 
 # Limpiar y convertir valores numéricos en df_res
-df_res["Monto"] = df_res["Monto"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+def convertir_valores(valor):
+    try:
+        texto = str(valor).strip()
+        texto = texto.replace(".", "").replace(",", ".")  # elimina separador de miles, cambia coma por punto
+        return float(texto)
+    except:
+        return None
+
+df_res["Monto"] = df_res["Monto"].apply(convertir_valores)
+df_res["Total Gastado"] = df_res["Total Gastado"].apply(convertir_valores)
+df_res["Saldo Actual"] = df_res["Saldo Actual"].apply(convertir_valores)
+
 df_res["Total Gastado"] = df_res["Total Gastado"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
 df_res["Saldo Actual"] = df_res["Saldo Actual"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
 
