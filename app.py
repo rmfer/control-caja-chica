@@ -247,8 +247,14 @@ else:
         if 'Caja' in df_filtrado_display.columns:
             df_filtrado_display = df_filtrado_display.drop(columns=['Caja'])
 
+        # Resetear índice para que no se muestre la columna índice numérica
+        df_filtrado_display = df_filtrado_display.reset_index(drop=True)
+
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
-        st.dataframe(df_filtrado_display)
+
+        # Mostrar tabla sin índice visible usando st.table
+        st.table(df_filtrado_display)
+
     elif len(cajas) == 1 and consumo == 0:
         st.info("No hay consumos para mostrar en el gráfico ni en la tabla con los filtros actuales.")
     # Si hay más de una caja seleccionada, no mostrar ni gráfico ni mensaje
