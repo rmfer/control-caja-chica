@@ -142,13 +142,10 @@ proveedor_seleccionado = st.sidebar.multiselect(
 
 # --- FILTRAR ÁREAS DINÁMICAMENTE SEGÚN CAJAS SELECCIONADAS ---
 
-# Filtrar df_mov solo por cajas seleccionadas para obtener áreas válidas
 df_areas_filtrado = df_mov[df_mov["Caja"].isin(cajas)]
 
-# Extraer todas las áreas únicas de las filas filtradas (recordando que 'Área' es lista)
 areas_disponibles = sorted({area for sublist in df_areas_filtrado['Área'] for area in sublist if area})
 
-# Mostrar filtro de áreas con solo las áreas disponibles
 areas_seleccionadas = st.sidebar.multiselect(
     "Área",
     options=areas_disponibles,
@@ -159,10 +156,8 @@ areas_seleccionadas = st.sidebar.multiselect(
 
 cuatrimestres_posibles = ['1', '2', '3', '4']
 
-# Obtener cuatrimestres existentes en los datos
 cuatrimestres_existentes = df_mov['Cuatrimestre'].dropna().unique().tolist()
 
-# Combinar y ordenar sin duplicados
 cuatrimestres_totales = sorted(set(cuatrimestres_posibles) | set(cuatrimestres_existentes))
 
 cuatrimestres_seleccionados = st.sidebar.multiselect(
@@ -175,13 +170,11 @@ cuatrimestres_seleccionados = st.sidebar.multiselect(
 if not cajas:
     st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
 else:
-    # Filtrar resumen por cajas y cuatrimestres seleccionados
     resumen_filtrado = df_res[
         (df_res["Caja"].isin(cajas)) &
         (df_res["Cuatrimestre"].isin(cuatrimestres_seleccionados))
     ]
 
-    # Filtrar movimientos para calcular consumo
     df_consumo_filtrado = df_mov[
         (df_mov["Caja"].isin(cajas)) &
         (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
@@ -189,11 +182,9 @@ else:
         (df_mov["Área"].apply(lambda areas: any(area in areas for area in areas_seleccionadas)))
     ]
 
-    # Mostrar métricas por caja
     for caja in cajas:
         st.subheader(f"Caja: {caja}")
 
-        # Leyenda Anual Asignado: total disponible asignado para la caja (sin filtrar cuatrimestre)
         asignado_anual = df_res[df_res["Caja"] == caja]["Monto"].sum()
         st.markdown(f"**Anual Asignado:** {formatear_moneda(asignado_anual)}")
 
@@ -206,12 +197,11 @@ else:
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Disponible", formatear_moneda(disponible))
-        col2.metric("Consumo", formatear_moneda(consumo))  # Cambiado "Gastado" por "Consumo"
+        col2.metric("Consumo", formatear_moneda(consumo))
         col3.metric("Saldo", formatear_moneda(saldo))
 
-    # Mostrar gráfico y tabla solo si hay consumos y una única caja seleccionada
     if len(cajas) == 1 and consumo > 0:
-        st.header("Consumo por Proveedor")  # Cambiado título aquí
+        st.header("Consumo por Proveedor")
         consumo_proveedor = df_consumo_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
         st.bar_chart(consumo_proveedor)
 
