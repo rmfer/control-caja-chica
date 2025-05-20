@@ -5,16 +5,13 @@ from oauth2client.service_account import ServiceAccountCredentials
 import locale
 import re
 
-# --- Configuración de la página ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
 
-# Configurar locale para formateo de moneda (ajustar según sistema)
 try:
     locale.setlocale(locale.LC_ALL, 'es_AR.UTF-8')
 except locale.Error:
     locale.setlocale(locale.LC_ALL, '')
 
-# --- Autenticación con Google Sheets ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(
     st.secrets["google_service_account"], scope
@@ -23,7 +20,6 @@ client = gspread.authorize(credentials)
 
 sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 
-# --- Funciones ---
 @st.cache_data(ttl=3600)
 def cargar_hoja(nombre_hoja):
     try:
@@ -34,6 +30,12 @@ def cargar_hoja(nombre_hoja):
     except Exception as e:
         st.error(f"No se pudo cargar la hoja '{nombre_hoja}': {e}")
         return pd.DataFrame()
+
+def asegurar_columnas(df, columnas_requeridas):
+    for col in columnas_requeridas:
+        if col not in df.columns:
+            df[col] = 0
+    return df
 
 def validar_columnas(df, columnas_requeridas):
     faltantes = [col for col in columnas_requeridas if col not in df.columns]
@@ -58,13 +60,11 @@ def formatear_moneda(valor):
     except Exception:
         return f"${valor:,.2f}"
 
-# --- Carga de datos ---
 mov_repuestos = cargar_hoja("Movimientos Repuestos")
 mov_petroleo = cargar_hoja("Movimientos Petróleo")
 res_repuestos = cargar_hoja("Resumen Repuestos")
 res_petroleo = cargar_hoja("Resumen Petróleo")
 
-# Añadir columna Caja si no existe
 if "Caja" not in mov_repuestos.columns:
     mov_repuestos["Caja"] = "Repuestos"
 if "Caja" not in mov_petroleo.columns:
@@ -73,16 +73,18 @@ if "Caja" not in mov_petroleo.columns:
 res_repuestos["Caja"] = "Repuestos"
 res_petroleo["Caja"] = "Petróleo"
 
-# Validar columnas
 columnas_esperadas_mov = ["Monto", "Cuatrimestre", "Proveedor", "Caja"]
 columnas_esperadas_resumen = ["Cuatrimestre", "Monto", "Total Gastado", "Saldo Actual", "Caja"]
+
+# Asegurar columnas para evitar errores
+res_repuestos = asegurar_columnas(res_repuestos, columnas_esperadas_resumen)
+res_petroleo = asegurar_columnas(res_petroleo, columnas_esperadas_resumen)
 
 for df in [mov_repuestos, mov_petroleo]:
     validar_columnas(df, columnas_esperadas_mov)
 for df in [res_repuestos, res_petroleo]:
     validar_columnas(df, columnas_esperadas_resumen)
 
-# Convertir montos a float
 for col in ["Monto", "Total Gastado", "Saldo Actual"]:
     res_repuestos[col] = res_repuestos[col].apply(convertir_monto)
     res_petroleo[col] = res_petroleo[col].apply(convertir_monto)
@@ -90,23 +92,19 @@ for col in ["Monto", "Total Gastado", "Saldo Actual"]:
 mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(convertir_monto)
 mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(convertir_monto)
 
-# Concatenar datos
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
-# --- Streamlit UI ---
 st.title("Control de Cajas Chicas 2025")
 
 st.sidebar.header("Filtros")
 
-# Filtro cajas
 cajas = st.sidebar.multiselect(
     "Caja",
     options=sorted(df_mov["Caja"].unique()),
     default=sorted(df_mov["Caja"].unique())
 )
 
-# Filtrar proveedores según cajas seleccionadas
 proveedores_repuestos = mov_repuestos["Proveedor"].dropna().unique().tolist()
 proveedores_petroleo = mov_petroleo["Proveedor"].dropna().unique().tolist()
 
@@ -124,7 +122,6 @@ proveedor_seleccionado = st.sidebar.multiselect(
     default=proveedores_filtrados
 )
 
-# Filtro cuatrimestres
 cuatrimestres = st.sidebar.multiselect(
     "Cuatrimestre",
     options=sorted(df_mov["Cuatrimestre"].dropna().unique()),
@@ -155,19 +152,36 @@ else:
         else:
             st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
 
-    # Se elimina sección "Gasto por Proveedor" y gráfico
-
     if not df_filtrado.empty:
         st.header("Facturación")
         df_filtrado_display = df_filtrado.copy()
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
-        df_filtrado_display = df_filtrado_display.reset_index(drop=True)  # Eliminar índice original
+        df_filtrado_display = df_filtrado_display.reset_index(drop=True)
 
-        styled_df = df_filtrado_display.style.hide(axis="index").set_table_styles([
-            {"selector": "th", "props": [("text-align", "center"), ("background-color", "#f0f0f0"), ("padding", "8px")]},
-            {"selector": "td", "props": [("padding", "8px")]}
-        ])
+        html = df_filtrado_display.to_html(index=False)
 
-        st.dataframe(styled_df, hide_index=True)  # hide_index=True requiere Streamlit 1.23+
+        css = """
+        <style>
+            table {
+                border-collapse: collapse;
+                width: 100%;
+            }
+            th {
+                text-align: center;
+                background-color: #f0f0f0;
+                padding: 8px;
+            }
+            td {
+                padding: 8px;
+                text-align: left;
+            }
+            /* Centrar la columna Cuatrimestre (cuarta columna) */
+            td:nth-child(4) {
+                text-align: center;
+            }
+        </style>
+        """
+
+        st.markdown(css + html, unsafe_allow_html=True)
     else:
         st.info("No hay movimientos para mostrar con los filtros actuales.")
