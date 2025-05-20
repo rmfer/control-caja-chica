@@ -163,10 +163,15 @@ else:
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
         df_filtrado_display = df_filtrado_display.reset_index(drop=True)  # Eliminar índice original
 
-        styled_df = df_filtrado_display.style.hide(axis="index").set_table_styles([
-            {"selector": "th", "props": [("text-align", "center"), ("background-color", "#f0f0f0"), ("padding", "8px")]},
-            {"selector": "td", "props": [("padding", "8px")]}
-        ])
+        styled_df = (
+            df_filtrado_display.style
+            .hide(axis="index")
+            .set_table_styles([
+                {"selector": "th", "props": [("text-align", "center"), ("background-color", "#f0f0f0"), ("padding", "8px")]},
+                {"selector": "td", "props": [("padding", "8px")]}
+            ])
+            .set_properties(subset=["Cuatrimestre"], **{"text-align": "center"})
+        )
 
         st.dataframe(styled_df, hide_index=True)  # hide_index=True requiere Streamlit 1.23+
     else:
