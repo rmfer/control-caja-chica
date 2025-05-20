@@ -14,14 +14,34 @@ try:
 except locale.Error:
     locale.setlocale(locale.LC_ALL, '')
 
-# --- Autenticación con Google Sheets ---
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials = ServiceAccountCredentials.from_json_keyfile_dict(
-    st.secrets["google_service_account"], scope
-)
-client = gspread.authorize(credentials)
+# --- Funciones ---
+def normalizar_texto(texto):
+    texto = texto.lower().strip()
+    texto = ''.join(
+        c for c in unicodedata.normalize('NFD', texto)
+        if unicodedata.category(c) != 'Mn'
+    )
+    return texto
 
-sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
+def convertir_monto(valor):
+    if pd.isna(valor):
+        return 0.0
+    texto = str(valor).strip()
+    texto = re.sub(r'[^0-9,.\-]', '', texto)
+    if texto.count(',') > 0 and texto.count('.') > 0:
+        texto = texto.replace('.', '').replace(',', '.')
+    else:
+        texto = texto.replace(',', '')
+    try:
+        return float(texto)
+    except ValueError:
+        return 0.0
+
+def formatear_moneda(valor):
+    try:
+        return locale.currency(valor, grouping=True)
+    except Exception:
+        return f"${valor:,.2f}"
 
 @st.cache_data(ttl=3600)
 def cargar_hoja(nombre_hoja):
@@ -46,33 +66,13 @@ def validar_columnas(df, columnas_requeridas):
         st.error(f"Faltan columnas en los datos: {', '.join(faltantes)}")
         st.stop()
 
-def convertir_monto(valor):
-    if pd.isna(valor):
-        return 0.0
-    texto = str(valor).strip()
-    texto = re.sub(r'[^0-9,.\-]', '', texto)
-    if texto.count(',') > 0 and texto.count('.') > 0:
-        texto = texto.replace('.', '').replace(',', '.')
-    else:
-        texto = texto.replace(',', '')
-    try:
-        return float(texto)
-    except ValueError:
-        return 0.0
-
-def formatear_moneda(valor):
-    try:
-        return locale.currency(valor, grouping=True)
-    except Exception:
-        return f"${valor:,.2f}"
-
-def normalizar_texto(texto):
-    texto = texto.lower().strip()
-    texto = ''.join(
-        c for c in unicodedata.normalize('NFD', texto)
-        if unicodedata.category(c) != 'Mn'
-    )
-    return texto
+# --- Autenticación Google Sheets ---
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(
+    st.secrets["google_service_account"], scope
+)
+client = gspread.authorize(credentials)
+sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 
 # --- Carga de datos ---
 mov_repuestos = cargar_hoja("Movimientos Repuestos")
@@ -112,9 +112,11 @@ df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
 # Normalizar columnas para evitar problemas de filtro
 df_mov["Caja"] = df_mov["Caja"].astype(str).apply(normalizar_texto)
+df_mov["Proveedor"] = df_mov["Proveedor"].astype(str).apply(normalizar_texto)
+df_mov["Cuatrimestre"] = df_mov["Cuatrimestre"].astype(str).str.strip()
+
 df_res["Caja"] = df_res["Caja"].astype(str).apply(normalizar_texto)
 df_res["Cuatrimestre"] = df_res["Cuatrimestre"].astype(str).str.strip()
-df_mov["Cuatrimestre"] = df_mov["Cuatrimestre"].astype(str).str.strip()
 
 st.title("Control de Cajas Chicas 2025")
 
@@ -143,6 +145,9 @@ proveedor_seleccionado = st.sidebar.multiselect(
     default=proveedores_filtrados
 )
 
+# Normalizar proveedores seleccionados
+proveedor_seleccionado_norm = [normalizar_texto(p) for p in proveedor_seleccionado]
+
 cuatrimestres = st.sidebar.multiselect(
     "Cuatrimestre",
     options=sorted(df_mov["Cuatrimestre"].dropna().unique()),
@@ -157,9 +162,14 @@ else:
 
     df_filtrado = df_mov[
         (df_mov["Caja"].isin(cajas_filtrar)) &
-        (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
+        (df_mov["Proveedor"].isin(proveedor_seleccionado_norm)) &
         (df_mov["Cuatrimestre"].isin(cuatrimestres_filtrar))
     ]
+
+    # Depuración: mostrar cantidad de filas filtradas y primeras filas
+    st.write(f"Movimientos filtrados: {len(df_filtrado)} filas")
+    if len(df_filtrado) > 0:
+        st.dataframe(df_filtrado.head(10))
 
     for caja in cajas_filtrar:
         st.subheader(f"Caja: {caja.capitalize()}")
