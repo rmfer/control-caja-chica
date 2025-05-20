@@ -100,13 +100,20 @@ for df in [mov_repuestos, mov_petroleo]:
 for df in [res_repuestos, res_petroleo]:
     validar_columnas(df, columnas_esperadas_resumen)
 
+# Convertir y limpiar columnas numéricas en resumen
 for col in ["Monto", "Consumo", "Saldo Actual"]:
     res_repuestos[col] = res_repuestos[col].apply(convertir_monto)
     res_petroleo[col] = res_petroleo[col].apply(convertir_monto)
 
+# Eliminar duplicados en resumen para evitar sumas erróneas
+res_repuestos = res_repuestos.drop_duplicates()
+res_petroleo = res_petroleo.drop_duplicates()
+
+# Convertir y limpiar columnas numéricas en movimientos
 mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(convertir_monto)
 mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(convertir_monto)
 
+# Concatenar movimientos y resumen
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
@@ -166,30 +173,6 @@ else:
         (df_mov["Cuatrimestre"].isin(cuatrimestres_filtrar))
     ]
 
-    # Depuración: mostrar cantidad de filas filtradas y primeras filas
-    st.write(f"Movimientos filtrados: {len(df_filtrado)} filas")
-    if len(df_filtrado) > 0:
-        st.dataframe(df_filtrado.head(10))
-
-    for caja in cajas_filtrar:
-        st.subheader(f"Caja: {caja.capitalize()}")
-        resumen = df_res[
-            (df_res["Caja"] == caja) &
-            (df_res["Cuatrimestre"].isin(cuatrimestres_filtrar))
-        ]
-
-        if not resumen.empty:
-            disponible = resumen["Monto"].sum()
-            gastado = resumen["Consumo"].sum()
-            saldo = resumen["Saldo Actual"].sum()
-
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Monto Asignado", formatear_moneda(disponible))
-            col2.metric("Consumo", formatear_moneda(gastado))
-            col3.metric("Saldo", formatear_moneda(saldo))
-        else:
-            st.info(f"No hay resumen disponible para la caja {caja.capitalize()} con los filtros seleccionados.")
-
     if not df_filtrado.empty:
         st.header("Facturación")
         df_filtrado_display = df_filtrado.copy()
@@ -212,3 +195,26 @@ else:
         )
     else:
         st.info("No hay movimientos para mostrar con los filtros actuales.")
+
+    for caja in cajas_filtrar:
+        st.subheader(f"Caja: {caja.capitalize()}")
+        resumen = df_res[
+            (df_res["Caja"] == caja) &
+            (df_res["Cuatrimestre"].isin(cuatrimestres_filtrar))
+        ]
+
+        # Mostrar resumen filtrado para depuración (opcional, puedes comentar esta línea)
+        st.write(f"Resumen filtrado para caja {caja.capitalize()}:")
+        st.dataframe(resumen)
+
+        if not resumen.empty:
+            disponible = resumen["Monto"].sum()
+            gastado = resumen["Consumo"].sum()
+            saldo = resumen["Saldo Actual"].sum()
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Monto Asignado", formatear_moneda(disponible))
+            col2.metric("Consumo", formatear_moneda(gastado))
+            col3.metric("Saldo", formatear_moneda(saldo))
+        else:
+            st.info(f"No hay resumen disponible para la caja {caja.capitalize()} con los filtros seleccionados.")
