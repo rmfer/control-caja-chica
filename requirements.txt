@@ -5,4 +5,4 @@ pandas
 google-auth
 matplotlib
 fpdf2
-st-clickable-images
+
