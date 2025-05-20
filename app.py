@@ -4,6 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import locale
 import re
+import unicodedata
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
@@ -65,6 +66,15 @@ def formatear_moneda(valor):
     except Exception:
         return f"${valor:,.2f}"
 
+def normalizar_texto(texto):
+    texto = texto.lower().strip()
+    texto = ''.join(
+        c for c in unicodedata.normalize('NFD', texto)
+        if unicodedata.category(c) != 'Mn'
+    )
+    return texto
+
+# --- Carga de datos ---
 mov_repuestos = cargar_hoja("Movimientos Repuestos")
 mov_petroleo = cargar_hoja("Movimientos Petróleo")
 res_repuestos = cargar_hoja("Resumen Repuestos")
@@ -101,8 +111,8 @@ df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
 # Normalizar columnas para evitar problemas de filtro
-df_mov["Caja"] = df_mov["Caja"].astype(str).str.strip().str.lower()
-df_res["Caja"] = df_res["Caja"].astype(str).str.strip().str.lower()
+df_mov["Caja"] = df_mov["Caja"].astype(str).apply(normalizar_texto)
+df_res["Caja"] = df_res["Caja"].astype(str).apply(normalizar_texto)
 df_res["Cuatrimestre"] = df_res["Cuatrimestre"].astype(str).str.strip()
 df_mov["Cuatrimestre"] = df_mov["Cuatrimestre"].astype(str).str.strip()
 
@@ -142,8 +152,7 @@ cuatrimestres = st.sidebar.multiselect(
 if not cajas:
     st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
 else:
-    # Normalizar filtros para comparar con datos normalizados
-    cajas_filtrar = [c.strip().lower() for c in cajas]
+    cajas_filtrar = [normalizar_texto(c) for c in cajas]
     cuatrimestres_filtrar = [str(c).strip() for c in cuatrimestres]
 
     df_filtrado = df_mov[
