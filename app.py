@@ -49,9 +49,16 @@ def convertir_monto(valor):
     if pd.isna(valor):
         return 0.0
     texto = str(valor).strip()
+    # Eliminar todo lo que no sea dígito, coma, punto o signo negativo
+    texto = re.sub(r'[^0-9,.\-]', '', texto)
+    # Reemplazar puntos de miles y comas decimales
+    if texto.count(',') > 0 and texto.count('.') > 0:
+        # Asumir formato europeo: puntos miles, coma decimal
+        texto = texto.replace('.', '').replace(',', '.')
+    else:
+        # Asumir formato americano o sin miles
+        texto = texto.replace(',', '')
     try:
-        texto = re.sub(r'\.', '', texto)
-        texto = texto.replace(',', '.')
         return float(texto)
     except ValueError:
         return 0.0
@@ -86,6 +93,7 @@ for df in [mov_repuestos, mov_petroleo]:
 for df in [res_repuestos, res_petroleo]:
     validar_columnas(df, columnas_esperadas_resumen)
 
+# Aplicar conversión y asegurar tipo numérico
 for col in ["Monto", "Total Gastado", "Saldo Actual"]:
     res_repuestos[col] = res_repuestos[col].apply(convertir_monto)
     res_petroleo[col] = res_petroleo[col].apply(convertir_monto)
