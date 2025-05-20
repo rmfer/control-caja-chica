@@ -149,8 +149,8 @@ else:
             saldo = resumen["Saldo Actual"].sum()
 
             col1, col2, col3 = st.columns(3)
-            col1.metric("Disponible", formatear_moneda(disponible))
-            col2.metric("Gastado", formatear_moneda(gastado))
+            col1.metric("Monto Asignado", formatear_moneda(disponible))
+            col2.metric("Consumo", formatear_moneda(gastado))
             col3.metric("Saldo", formatear_moneda(saldo))
         else:
             st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
