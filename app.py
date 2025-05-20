@@ -160,25 +160,14 @@ else:
         df_filtrado_display = df_filtrado.copy()
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
 
-        html = df_filtrado_display.to_html(index=False)
-        html_styled = f"""
-        <style>
-            table {{
-                border-collapse: collapse;
-                width: 100%;
-            }}
-            th {{
-                text-align: center;
-                background-color: #f0f0f0;
-                padding: 8px;
-            }}
-            td {{
-                padding: 8px;
-            }}
-        </style>
-        {html}
-        """
+        # Estilos para centrar encabezados
+        styles = [
+            dict(selector="th", props=[("text-align", "center"), ("background-color", "#f0f0f0"), ("padding", "8px")]),
+            dict(selector="td", props=[("padding", "8px")])
+        ]
 
-        st.markdown(html_styled, unsafe_allow_html=True)
+        styled_df = df_filtrado_display.style.set_table_styles(styles)
+
+        st.dataframe(styled_df)
     else:
         st.info("No hay movimientos para mostrar con los filtros actuales.")
