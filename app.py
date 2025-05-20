@@ -169,6 +169,6 @@ else:
         st.header("Facturación")
         df_filtrado_display = df_filtrado.copy()
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
-        st.dataframe(df_filtrado_display.reset_index(drop=True), index=False, use_container_width=True)
+        st.table(df_filtrado_display.reset_index(drop=True))
     else:
         st.info("No hay movimientos para mostrar con los filtros actuales.")
