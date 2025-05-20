@@ -155,15 +155,7 @@ else:
         else:
             st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
 
-    st.header("Gasto por Proveedor")
-    if len(cajas) == 1:
-        if not df_filtrado.empty:
-            gastos_proveedor = df_filtrado.groupby("Proveedor")["Monto"].sum().sort_values(ascending=False)
-            st.bar_chart(gastos_proveedor)
-        else:
-            st.info("No hay movimientos para los filtros seleccionados.")
-    else:
-        st.info("Selecciona una única caja para visualizar el gráfico de gasto por proveedor.")
+    # Sección "Gasto por Proveedor" y gráfico eliminados
 
     if not df_filtrado.empty:
         st.header("Facturación")
