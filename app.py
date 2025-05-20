@@ -159,10 +159,8 @@ else:
         st.header("Facturación")
         df_filtrado_display = df_filtrado.copy()
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
-        
-        # Convertir a HTML con estilos para centrar encabezados
+
         html = df_filtrado_display.to_html(index=False)
-        # Añadir estilo CSS para centrar encabezados (th)
         html_styled = f"""
         <style>
             table {{
@@ -180,6 +178,7 @@ else:
         </style>
         {html}
         """
-        st.write(html_styled, unsafe_allow_html=True)
+
+        st.markdown(html_styled, unsafe_allow_html=True)
     else:
         st.info("No hay movimientos para mostrar con los filtros actuales.")
