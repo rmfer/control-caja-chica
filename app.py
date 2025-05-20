@@ -180,8 +180,8 @@ else:
                 padding: 8px;
                 text-align: left;
             }
-            /* Centrar la columna Cuatrimestre (cuarta columna) */
-            td:nth-child(4) {
+            /* Centrar la columna Cuatrimestre (segunda columna) */
+            td:nth-child(2) {
                 text-align: center;
             }
         </style>
