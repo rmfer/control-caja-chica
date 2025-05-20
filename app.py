@@ -155,19 +155,19 @@ else:
         else:
             st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
 
+    # Se elimina sección "Gasto por Proveedor" y gráfico
+
     if not df_filtrado.empty:
         st.header("Facturación")
         df_filtrado_display = df_filtrado.copy()
         df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
+        df_filtrado_display = df_filtrado_display.reset_index(drop=True)  # Eliminar índice original
 
-        # Estilos para centrar encabezados
-        styles = [
-            dict(selector="th", props=[("text-align", "center"), ("background-color", "#f0f0f0"), ("padding", "8px")]),
-            dict(selector="td", props=[("padding", "8px")])
-        ]
+        styled_df = df_filtrado_display.style.hide(axis="index").set_table_styles([
+            {"selector": "th", "props": [("text-align", "center"), ("background-color", "#f0f0f0"), ("padding", "8px")]},
+            {"selector": "td", "props": [("padding", "8px")]}
+        ])
 
-        styled_df = df_filtrado_display.style.set_table_styles(styles)
-
-        st.dataframe(styled_df)
+        st.dataframe(styled_df, hide_index=True)  # hide_index=True requiere Streamlit 1.23+
     else:
         st.info("No hay movimientos para mostrar con los filtros actuales.")
