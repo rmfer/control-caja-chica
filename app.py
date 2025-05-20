@@ -70,6 +70,7 @@ mov_petroleo = cargar_hoja("Movimientos Petróleo")
 res_repuestos = cargar_hoja("Resumen Repuestos")
 res_petroleo = cargar_hoja("Resumen Petróleo")
 
+# Añadir columna Caja si no existe
 if "Caja" not in mov_repuestos.columns:
     mov_repuestos["Caja"] = "Repuestos"
 if "Caja" not in mov_petroleo.columns:
@@ -99,6 +100,12 @@ mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(convertir_monto)
 df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
 df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
 
+# Normalizar columnas para evitar problemas de filtro
+df_mov["Caja"] = df_mov["Caja"].astype(str).str.strip().str.lower()
+df_res["Caja"] = df_res["Caja"].astype(str).str.strip().str.lower()
+df_res["Cuatrimestre"] = df_res["Cuatrimestre"].astype(str).str.strip()
+df_mov["Cuatrimestre"] = df_mov["Cuatrimestre"].astype(str).str.strip()
+
 st.title("Control de Cajas Chicas 2025")
 
 st.sidebar.header("Filtros")
@@ -113,9 +120,9 @@ proveedores_repuestos = mov_repuestos["Proveedor"].dropna().unique().tolist()
 proveedores_petroleo = mov_petroleo["Proveedor"].dropna().unique().tolist()
 
 proveedores_filtrados = []
-if "Repuestos" in cajas:
+if "repuestos" in cajas:
     proveedores_filtrados.extend(proveedores_repuestos)
-if "Petróleo" in cajas:
+if "petróleo" in cajas:
     proveedores_filtrados.extend(proveedores_petroleo)
 
 proveedores_filtrados = sorted(set(proveedores_filtrados))
@@ -135,15 +142,23 @@ cuatrimestres = st.sidebar.multiselect(
 if not cajas:
     st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
 else:
+    # Normalizar filtros para comparar con datos normalizados
+    cajas_filtrar = [c.strip().lower() for c in cajas]
+    cuatrimestres_filtrar = [str(c).strip() for c in cuatrimestres]
+
     df_filtrado = df_mov[
-        (df_mov["Caja"].isin(cajas)) &
+        (df_mov["Caja"].isin(cajas_filtrar)) &
         (df_mov["Proveedor"].isin(proveedor_seleccionado)) &
-        (df_mov["Cuatrimestre"].isin(cuatrimestres))
+        (df_mov["Cuatrimestre"].isin(cuatrimestres_filtrar))
     ]
 
-    for caja in cajas:
-        st.subheader(f"Caja: {caja}")
-        resumen = df_res[(df_res["Caja"] == caja) & (df_res["Cuatrimestre"].isin(cuatrimestres))]
+    for caja in cajas_filtrar:
+        st.subheader(f"Caja: {caja.capitalize()}")
+        resumen = df_res[
+            (df_res["Caja"] == caja) &
+            (df_res["Cuatrimestre"].isin(cuatrimestres_filtrar))
+        ]
+
         if not resumen.empty:
             disponible = resumen["Monto"].sum()
             gastado = resumen["Consumo"].sum()
@@ -154,7 +169,7 @@ else:
             col2.metric("Consumo", formatear_moneda(gastado))
             col3.metric("Saldo", formatear_moneda(saldo))
         else:
-            st.info(f"No hay resumen disponible para la caja {caja} con los filtros seleccionados.")
+            st.info(f"No hay resumen disponible para la caja {caja.capitalize()} con los filtros seleccionados.")
 
     if not df_filtrado.empty:
         st.header("Facturación")
