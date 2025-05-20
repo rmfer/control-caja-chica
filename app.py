@@ -165,8 +165,8 @@ else:
     else:
         st.info("Selecciona una única caja para visualizar el gráfico de gasto por proveedor.")
 
-   st.header("Facturación")
-if not df_filtrado.empty:
+ if not df_filtrado.empty:
+    st.header("Facturación")
     df_filtrado_display = df_filtrado.copy()
     df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
     st.dataframe(df_filtrado_display.reset_index(drop=True), index=False, use_container_width=True)
