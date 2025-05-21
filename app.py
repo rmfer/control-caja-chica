@@ -21,11 +21,7 @@ SPREADSHEET_ID = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 # Función para leer datos de una hoja
 def leer_hoja(nombre_hoja):
     sheet = service.spreadsheets()
-    result = (
-        sheet.values()
-        .get(spreadsheetId=SPREADSHEET_ID, range=nombre_hoja)
-        .execute()
-    )
+    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=nombre_hoja).execute()
     values = result.get("values", [])
     if not values:
         return pd.DataFrame()
@@ -88,13 +84,13 @@ st.dataframe(df_repuestos_filtrado)
 st.subheader("Movimientos Petróleo")
 st.dataframe(df_petroleo_filtrado)
 
-# --- Chat IA simple con Huggingface (ejemplo) ---
+# --- Chat IA simple con Huggingface ---
 st.subheader("Consulta con IA")
 user_input = st.text_input("Pregunta sobre las cajas chicas")
 
 if user_input:
     API_URL = "https://api-inference.huggingface.co/models/bigscience/bloom"
-    headers = {"Authorization": f"Bearer {st.secrets['huggingface_api_token']}"}
+    headers = {"Authorization": f"Bearer {st.secrets['huggingface']['api_token']}"}
     payload = {"inputs": user_input}
     response = requests.post(API_URL, headers=headers, json=payload)
     if response.status_code == 200:
@@ -105,4 +101,3 @@ if user_input:
             st.write("No se pudo obtener una respuesta clara.")
     else:
         st.write(f"Error en la API: {response.status_code}")
-
