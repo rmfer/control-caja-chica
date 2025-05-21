@@ -1,220 +1,73 @@
 import streamlit as st
-import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import locale
-import re
-import unicodedata
+import pandas as pd
+import requests
 
-# --- Configuración de la página ---
-st.set_page_config(page_title="Control de Cajas Chicas 2025", layout="wide")
-
-try:
-    locale.setlocale(locale.LC_ALL, 'es_AR.UTF-8')
-except locale.Error:
-    locale.setlocale(locale.LC_ALL, '')
-
-# --- Funciones ---
-def normalizar_texto(texto):
-    texto = texto.lower().strip()
-    texto = ''.join(
-        c for c in unicodedata.normalize('NFD', texto)
-        if unicodedata.category(c) != 'Mn'
-    )
-    return texto
-
-def convertir_monto(valor):
-    if pd.isna(valor):
-        return 0.0
-    texto = str(valor).strip()
-    texto = re.sub(r'[^0-9,.\-]', '', texto)
-    if texto.count(',') > 0 and texto.count('.') > 0:
-        texto = texto.replace('.', '').replace(',', '.')
-    else:
-        texto = texto.replace(',', '')
-    try:
-        return float(texto)
-    except ValueError:
-        return 0.0
-
-def formatear_moneda(valor):
-    try:
-        return locale.currency(valor, grouping=True)
-    except Exception:
-        return f"${valor:,.2f}"
-
-@st.cache_data(ttl=3600)
-def cargar_hoja(nombre_hoja):
-    try:
-        sheet = client.open_by_key(sheet_id).worksheet(nombre_hoja)
-        df = pd.DataFrame(sheet.get_all_records())
-        df.columns = df.columns.str.strip()
-        return df
-    except Exception as e:
-        st.error(f"No se pudo cargar la hoja '{nombre_hoja}': {e}")
-        return pd.DataFrame()
-
-def asegurar_columnas(df, columnas_requeridas):
-    for col in columnas_requeridas:
-        if col not in df.columns:
-            df[col] = 0
+# Función para cargar datos desde Google Sheets
+def cargar_datos(sheet_name, worksheet_name):
+    scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["google_service_account"])
+    client = gspread.authorize(creds)
+    sheet = client.open(sheet_name)
+    worksheet = sheet.worksheet(worksheet_name)
+    data = worksheet.get_all_records()
+    df = pd.DataFrame(data)
     return df
 
-def validar_columnas(df, columnas_requeridas):
-    faltantes = [col for col in columnas_requeridas if col not in df.columns]
-    if faltantes:
-        st.error(f"Faltan columnas en los datos: {', '.join(faltantes)}")
-        st.stop()
+# Función para crear un resumen simple de los datos
+def resumen_caja_chica(df):
+    resumen = ""
+    for _, row in df.iterrows():
+        resumen += f"Cuatrimestre {row.get('Cuatrimestre', '')}, Saldo Actual {row.get('Saldo Actual', '')}, Total Gastado {row.get('Total Gastado', '')}.\n"
+    return resumen
 
-# --- Autenticación Google Sheets ---
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials = ServiceAccountCredentials.from_json_keyfile_dict(
-    st.secrets["google_service_account"], scope
-)
-client = gspread.authorize(credentials)
-sheet_id = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
+# Crear prompt para la IA
+def construir_prompt(resumen: str, pregunta: str) -> str:
+    prompt = f"""
+Estos son los datos de la caja chica:
+{resumen}
 
-# --- Carga de datos ---
-mov_repuestos = cargar_hoja("Movimientos Repuestos")
-mov_petroleo = cargar_hoja("Movimientos Petróleo")
-res_repuestos = cargar_hoja("Resumen Repuestos")
-res_petroleo = cargar_hoja("Resumen Petróleo")
+Con base en esos datos, responde la siguiente pregunta:
+{pregunta}
 
-# Añadir columna Caja si no existe
-if "Caja" not in mov_repuestos.columns:
-    mov_repuestos["Caja"] = "Repuestos"
-if "Caja" not in mov_petroleo.columns:
-    mov_petroleo["Caja"] = "Petróleo"
+Respuesta:
+"""
+    return prompt
 
-res_repuestos["Caja"] = "Repuestos"
-res_petroleo["Caja"] = "Petróleo"
+# Función para consultar la API de Huggingface
+def consultar_huggingface(prompt: str):
+    API_URL = "https://api-inference.huggingface.co/models/gpt2"
+    headers = {"Authorization": f"Bearer {st.secrets['huggingface']['token']}"}
+    payload = {"inputs": prompt}
+    response = requests.post(API_URL, headers=headers, json=payload)
+    respuesta = response.json()
 
-columnas_esperadas_mov = ["Monto", "Cuatrimestre", "Proveedor", "Caja"]
-columnas_esperadas_resumen = ["Cuatrimestre", "Monto", "Consumo", "Saldo Actual", "Caja"]
-
-res_repuestos = asegurar_columnas(res_repuestos, columnas_esperadas_resumen)
-res_petroleo = asegurar_columnas(res_petroleo, columnas_esperadas_resumen)
-
-for df in [mov_repuestos, mov_petroleo]:
-    validar_columnas(df, columnas_esperadas_mov)
-for df in [res_repuestos, res_petroleo]:
-    validar_columnas(df, columnas_esperadas_resumen)
-
-# Convertir y limpiar columnas numéricas en resumen
-for col in ["Monto", "Consumo", "Saldo Actual"]:
-    res_repuestos[col] = res_repuestos[col].apply(convertir_monto)
-    res_petroleo[col] = res_petroleo[col].apply(convertir_monto)
-
-# Eliminar duplicados en resumen para evitar sumas erróneas
-res_repuestos = res_repuestos.drop_duplicates()
-res_petroleo = res_petroleo.drop_duplicates()
-
-# Convertir y limpiar columnas numéricas en movimientos
-mov_repuestos["Monto"] = mov_repuestos["Monto"].apply(convertir_monto)
-mov_petroleo["Monto"] = mov_petroleo["Monto"].apply(convertir_monto)
-
-# Concatenar movimientos y resumen
-df_mov = pd.concat([mov_repuestos, mov_petroleo], ignore_index=True)
-df_res = pd.concat([res_repuestos, res_petroleo], ignore_index=True)
-
-# Normalizar columnas para evitar problemas de filtro
-df_mov["Caja"] = df_mov["Caja"].astype(str).apply(normalizar_texto)
-df_mov["Proveedor"] = df_mov["Proveedor"].astype(str).apply(normalizar_texto)
-df_mov["Cuatrimestre"] = df_mov["Cuatrimestre"].astype(str).str.strip()
-
-df_res["Caja"] = df_res["Caja"].astype(str).apply(normalizar_texto)
-df_res["Cuatrimestre"] = df_res["Cuatrimestre"].astype(str).str.strip()
-
-st.title("Control de Cajas Chicas 2025")
-
-st.sidebar.header("Filtros")
-
-cajas = st.sidebar.multiselect(
-    "Caja",
-    options=sorted(df_mov["Caja"].unique()),
-    default=sorted(df_mov["Caja"].unique())
-)
-
-proveedores_repuestos = mov_repuestos["Proveedor"].dropna().unique().tolist()
-proveedores_petroleo = mov_petroleo["Proveedor"].dropna().unique().tolist()
-
-proveedores_filtrados = []
-if "repuestos" in cajas:
-    proveedores_filtrados.extend(proveedores_repuestos)
-if "petróleo" in cajas:
-    proveedores_filtrados.extend(proveedores_petroleo)
-
-proveedores_filtrados = sorted(set(proveedores_filtrados))
-
-proveedor_seleccionado = st.sidebar.multiselect(
-    "Proveedor",
-    options=proveedores_filtrados,
-    default=proveedores_filtrados
-)
-
-# Normalizar proveedores seleccionados
-proveedor_seleccionado_norm = [normalizar_texto(p) for p in proveedor_seleccionado]
-
-cuatrimestres = st.sidebar.multiselect(
-    "Cuatrimestre",
-    options=sorted(df_mov["Cuatrimestre"].dropna().unique()),
-    default=sorted(df_mov["Cuatrimestre"].dropna().unique())
-)
-
-if not cajas:
-    st.warning("Por favor, selecciona al menos una caja para mostrar los datos.")
-else:
-    cajas_filtrar = [normalizar_texto(c) for c in cajas]
-    cuatrimestres_filtrar = [str(c).strip() for c in cuatrimestres]
-
-    df_filtrado = df_mov[
-        (df_mov["Caja"].isin(cajas_filtrar)) &
-        (df_mov["Proveedor"].isin(proveedor_seleccionado_norm)) &
-        (df_mov["Cuatrimestre"].isin(cuatrimestres_filtrar))
-    ]
-
-    if not df_filtrado.empty:
-        st.header("Facturación")
-        df_filtrado_display = df_filtrado.copy()
-        df_filtrado_display["Monto"] = df_filtrado_display["Monto"].apply(formatear_moneda)
-        df_filtrado_display = df_filtrado_display.reset_index(drop=True)
-
-        st.dataframe(df_filtrado_display, hide_index=True)
-
-        st.markdown(
-            """
-            <style>
-            /* Centrar la columna Cuatrimestre (4ta columna) en la tabla de Streamlit */
-            div[data-testid="stDataFrame"] table tbody tr td:nth-child(4),
-            div[data-testid="stDataFrame"] table thead tr th:nth-child(4) {
-                text-align: center;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
+    if isinstance(respuesta, list) and len(respuesta) > 0 and "generated_text" in respuesta[0]:
+        return respuesta[0]["generated_text"]
+    elif isinstance(respuesta, dict) and "error" in respuesta:
+        return "Error de la API: " + respuesta["error"]
     else:
-        st.info("No hay movimientos para mostrar con los filtros actuales.")
+        return str(respuesta)
 
-    for caja in cajas_filtrar:
-        st.subheader(f"Caja: {caja.capitalize()}")
-        resumen = df_res[
-            (df_res["Caja"] == caja) &
-            (df_res["Cuatrimestre"].isin(cuatrimestres_filtrar))
-        ]
+# App principal Streamlit
+def main():
+    st.title("Consulta con IA sobre Cajas Chicas")
 
-        # Mostrar resumen filtrado para depuración (opcional, puedes comentar esta línea)
-        st.write(f"Resumen filtrado para caja {caja.capitalize()}:")
-        st.dataframe(resumen)
+    st.write("Cargando datos desde Google Sheets...")
+    df = cargar_datos("iacajas2025", "Resumen Repuestos")  # Cambia el nombre de la hoja si querés
 
-        if not resumen.empty:
-            disponible = resumen["Monto"].sum()
-            gastado = resumen["Consumo"].sum()
-            saldo = resumen["Saldo Actual"].sum()
+    resumen = resumen_caja_chica(df)
+    st.text_area("Resumen de datos cargados", resumen, height=150)
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Monto Asignado", formatear_moneda(disponible))
-            col2.metric("Consumo", formatear_moneda(gastado))
-            col3.metric("Saldo", formatear_moneda(saldo))
-        else:
-            st.info(f"No hay resumen disponible para la caja {caja.capitalize()} con los filtros seleccionados.")
+    pregunta = st.text_input("Escribí tu pregunta sobre la caja chica:")
+
+    if pregunta:
+        with st.spinner("Consultando IA..."):
+            prompt = construir_prompt(resumen, pregunta)
+            respuesta = consultar_huggingface(prompt)
+            st.markdown("### Respuesta de la IA:")
+            st.write(respuesta)
+
+if __name__ == "__main__":
+    main()
