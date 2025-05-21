@@ -1,74 +1,101 @@
 import streamlit as st
 import pandas as pd
-import gspread
 from google.oauth2.service_account import Credentials
-import requests
+from googleapiclient.discovery import build
 
-# Autenticación con Google Sheets
-scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-client = gspread.authorize(creds)
+# --- Configuración ---
+SPREADSHEET_ID = "tu_id_de_planilla_aqui"  # <-- Pon tu ID real
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
-# Cargar hojas de cálculo
-SHEET_NAME = "iacajas2025"
-hoja_mov_repuestos = client.open(SHEET_NAME).worksheet("Movimientos Repuestos")
-hoja_res_repuestos = client.open(SHEET_NAME).worksheet("Resumen Repuestos")
-hoja_mov_petroleo = client.open(SHEET_NAME).worksheet("Movimientos Petróleo")
-hoja_res_petroleo = client.open(SHEET_NAME).worksheet("Resumen Petróleo")
+@st.cache_data(show_spinner=False)
+def cargar_hoja(nombre_hoja):
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=SCOPES
+    )
+    service = build("sheets", "v4", credentials=creds)
+    sheet = service.spreadsheets()
+    result = (
+        sheet.values()
+        .get(spreadsheetId=SPREADSHEET_ID, range=nombre_hoja)
+        .execute()
+    )
+    values = result.get("values", [])
+    if not values:
+        return pd.DataFrame()
+    df = pd.DataFrame(values[1:], columns=values[0])
+    return df
 
-# Convertir a DataFrames
-df_mov_repuestos = pd.DataFrame(hoja_mov_repuestos.get_all_records())
-df_res_repuestos = pd.DataFrame(hoja_res_repuestos.get_all_records())
-df_mov_petroleo = pd.DataFrame(hoja_mov_petroleo.get_all_records())
-df_res_petroleo = pd.DataFrame(hoja_res_petroleo.get_all_records())
-
-# Función para consultar Hugging Face
-def consultar_huggingface(prompt: str):
-    API_URL = "https://api-inference.huggingface.co/models/bigscience/bloom-560m"
-    headers = {"Authorization": f"Bearer {st.secrets['huggingface']['token']}"}
-    payload = {"inputs": prompt}
-    response = requests.post(API_URL, headers=headers, json=payload)
-
-    try:
-        respuesta = response.json()
-    except Exception:
-        st.error("No se pudo decodificar la respuesta como JSON.")
-        st.text("Respuesta cruda de HuggingFace:")
-        st.text(response.text)
-        return "Error al procesar la respuesta de la IA."
-
-    if isinstance(respuesta, list) and len(respuesta) > 0 and "generated_text" in respuesta[0]:
-        return respuesta[0]["generated_text"]
-    elif isinstance(respuesta, dict) and "error" in respuesta:
-        return "Error de la API: " + respuesta["error"]
-    else:
-        return str(respuesta)
-
-# Interfaz principal
 def main():
-    st.title("Control de Caja Chica con IA 🤖💸")
+    st.title("Control de Caja Chica - Streamlit")
 
-    st.subheader("Movimientos - Repuestos")
-    st.dataframe(df_mov_repuestos)
+    tabs = st.tabs(
+        [
+            "Movimientos Repuestos",
+            "Resumen Repuestos",
+            "Movimientos Petróleo",
+            "Resumen Petróleo",
+        ]
+    )
 
-    st.subheader("Resumen - Repuestos")
-    st.dataframe(df_res_repuestos)
-
-    st.subheader("Movimientos - Petróleo")
-    st.dataframe(df_mov_petroleo)
-
-    st.subheader("Resumen - Petróleo")
-    st.dataframe(df_res_petroleo)
-
-    st.subheader("Consultá a la IA 🤔")
-    pregunta = st.text_input("¿Qué querés saber?")
-    if st.button("Consultar"):
-        if pregunta.strip():
-            respuesta = consultar_huggingface(pregunta)
-            st.subheader("Respuesta:")
-            st.write(respuesta)
+    # Movimientos Repuestos con filtro
+    with tabs[0]:
+        df_rep_mov = cargar_hoja("Movimientos Repuestos")
+        if df_rep_mov.empty:
+            st.warning("No hay datos en Movimientos Repuestos.")
         else:
-            st.warning("Por favor escribí una pregunta.")
+            cuatrimestres = df_rep_mov["Cuatrimestre"].unique()
+            filtro_cuatrimestre = st.selectbox(
+                "Filtrar por Cuatrimestre", options=["Todos"] + list(cuatrimestres)
+            )
+            if filtro_cuatrimestre != "Todos":
+                df_rep_mov = df_rep_mov[df_rep_mov["Cuatrimestre"] == filtro_cuatrimestre]
+
+            st.dataframe(df_rep_mov)
+
+    # Resumen Repuestos con métricas
+    with tabs[1]:
+        df_rep_res = cargar_hoja("Resumen Repuestos")
+        if df_rep_res.empty:
+            st.warning("No hay datos en Resumen Repuestos.")
+        else:
+            st.dataframe(df_rep_res)
+            try:
+                saldo = float(df_rep_res["Saldo Actual"].iloc[-1])
+                total_gastado = float(df_rep_res["Total Gastado"].iloc[-1])
+                st.metric("Saldo Actual Repuestos", f"${saldo:,.2f}")
+                st.metric("Total Gastado Repuestos", f"${total_gastado:,.2f}")
+            except Exception:
+                st.info("No se pudieron mostrar métricas numéricas.")
+
+    # Movimientos Petróleo con filtro
+    with tabs[2]:
+        df_pet_mov = cargar_hoja("Movimientos Petróleo")
+        if df_pet_mov.empty:
+            st.warning("No hay datos en Movimientos Petróleo.")
+        else:
+            cuatrimestres = df_pet_mov["Cuatrimestre"].unique()
+            filtro_cuatrimestre = st.selectbox(
+                "Filtrar por Cuatrimestre", options=["Todos"] + list(cuatrimestres), key="pet_mov"
+            )
+            if filtro_cuatrimestre != "Todos":
+                df_pet_mov = df_pet_mov[df_pet_mov["Cuatrimestre"] == filtro_cuatrimestre]
+
+            st.dataframe(df_pet_mov)
+
+    # Resumen Petróleo con métricas
+    with tabs[3]:
+        df_pet_res = cargar_hoja("Resumen Petróleo")
+        if df_pet_res.empty:
+            st.warning("No hay datos en Resumen Petróleo.")
+        else:
+            st.dataframe(df_pet_res)
+            try:
+                saldo = float(df_pet_res["Saldo Actual"].iloc[-1])
+                total_gastado = float(df_pet_res["Total Gastado"].iloc[-1])
+                st.metric("Saldo Actual Petróleo", f"${saldo:,.2f}")
+                st.metric("Total Gastado Petróleo", f"${total_gastado:,.2f}")
+            except Exception:
+                st.info("No se pudieron mostrar métricas numéricas.")
 
 if __name__ == "__main__":
     main()
