@@ -1,11 +1,5 @@
 streamlit
 gspread
-gspread-dataframe
-pandas
-google-auth
 oauth2client
-matplotlib
-fpdf2
-plotly
-huggingface_hub
+pandas
 requests
