@@ -1,47 +1,41 @@
 import streamlit as st
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 import requests
 
-# Función para cargar datos desde Google Sheets
-def cargar_datos(sheet_name, worksheet_name):
-    scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["google_service_account"])
-    client = gspread.authorize(creds)
-    sheet = client.open(sheet_name)
-    worksheet = sheet.worksheet(worksheet_name)
-    data = worksheet.get_all_records()
-    df = pd.DataFrame(data)
-    return df
+# Autenticación con Google Sheets
+scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+client = gspread.authorize(creds)
 
-# Función para crear un resumen simple de los datos
-def resumen_caja_chica(df):
-    resumen = ""
-    for _, row in df.iterrows():
-        resumen += f"Cuatrimestre {row.get('Cuatrimestre', '')}, Saldo Actual {row.get('Saldo Actual', '')}, Total Gastado {row.get('Total Gastado', '')}.\n"
-    return resumen
+# Cargar hojas de cálculo
+SHEET_NAME = "iacajas2025"
+hoja_mov_repuestos = client.open(SHEET_NAME).worksheet("Movimientos Repuestos")
+hoja_res_repuestos = client.open(SHEET_NAME).worksheet("Resumen Repuestos")
+hoja_mov_petroleo = client.open(SHEET_NAME).worksheet("Movimientos Petróleo")
+hoja_res_petroleo = client.open(SHEET_NAME).worksheet("Resumen Petróleo")
 
-# Crear prompt para la IA
-def construir_prompt(resumen: str, pregunta: str) -> str:
-    prompt = f"""
-Estos son los datos de la caja chica:
-{resumen}
+# Convertir a DataFrames
+df_mov_repuestos = pd.DataFrame(hoja_mov_repuestos.get_all_records())
+df_res_repuestos = pd.DataFrame(hoja_res_repuestos.get_all_records())
+df_mov_petroleo = pd.DataFrame(hoja_mov_petroleo.get_all_records())
+df_res_petroleo = pd.DataFrame(hoja_res_petroleo.get_all_records())
 
-Con base en esos datos, responde la siguiente pregunta:
-{pregunta}
-
-Respuesta:
-"""
-    return prompt
-
-# Función para consultar la API de Huggingface
+# Función para consultar Hugging Face
 def consultar_huggingface(prompt: str):
-    API_URL = "https://api-inference.huggingface.co/models/gpt2"
+    API_URL = "https://api-inference.huggingface.co/models/bigscience/bloom-560m"
     headers = {"Authorization": f"Bearer {st.secrets['huggingface']['token']}"}
     payload = {"inputs": prompt}
     response = requests.post(API_URL, headers=headers, json=payload)
-    respuesta = response.json()
+
+    try:
+        respuesta = response.json()
+    except Exception:
+        st.error("No se pudo decodificar la respuesta como JSON.")
+        st.text("Respuesta cruda de HuggingFace:")
+        st.text(response.text)
+        return "Error al procesar la respuesta de la IA."
 
     if isinstance(respuesta, list) and len(respuesta) > 0 and "generated_text" in respuesta[0]:
         return respuesta[0]["generated_text"]
@@ -50,28 +44,31 @@ def consultar_huggingface(prompt: str):
     else:
         return str(respuesta)
 
-# App principal Streamlit
+# Interfaz principal
 def main():
-    st.title("Consulta con IA sobre Cajas Chicas")
+    st.title("Control de Caja Chica con IA 🤖💸")
 
-    hoja = st.selectbox("Seleccioná la hoja de resumen que querés consultar:", [
-        "Resumen Repuestos", "Resumen Petróleo"
-    ])
+    st.subheader("Movimientos - Repuestos")
+    st.dataframe(df_mov_repuestos)
 
-    st.write("Cargando datos desde Google Sheets...")
-    df = cargar_datos("iacajas2025", hoja)
+    st.subheader("Resumen - Repuestos")
+    st.dataframe(df_res_repuestos)
 
-    resumen = resumen_caja_chica(df)
-    st.text_area("Resumen de datos cargados", resumen, height=150)
+    st.subheader("Movimientos - Petróleo")
+    st.dataframe(df_mov_petroleo)
 
-    pregunta = st.text_input("Escribí tu pregunta sobre la caja chica:")
+    st.subheader("Resumen - Petróleo")
+    st.dataframe(df_res_petroleo)
 
-    if pregunta:
-        with st.spinner("Consultando IA..."):
-            prompt = construir_prompt(resumen, pregunta)
-            respuesta = consultar_huggingface(prompt)
-            st.markdown("### Respuesta de la IA:")
+    st.subheader("Consultá a la IA 🤔")
+    pregunta = st.text_input("¿Qué querés saber?")
+    if st.button("Consultar"):
+        if pregunta.strip():
+            respuesta = consultar_huggingface(pregunta)
+            st.subheader("Respuesta:")
             st.write(respuesta)
+        else:
+            st.warning("Por favor escribí una pregunta.")
 
 if __name__ == "__main__":
     main()
