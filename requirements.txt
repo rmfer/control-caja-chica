@@ -7,4 +7,5 @@ oauth2client
 matplotlib
 fpdf2
 plotly
-
+pandasai==2.3.7
+openai
