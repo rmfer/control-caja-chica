@@ -4,138 +4,105 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 import requests
 
-# Configuraciones iniciales
-st.set_page_config(page_title="Control Caja Chica", layout="wide")
+# --- Configuración ---
+st.set_page_config(page_title="Control de Caja Chica", layout="wide")
 
-# Variables
-SCOPE = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-SPREADSHEET_ID = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
-
-# Autenticación con credenciales en secrets
+# --- Autenticación Google Sheets ---
+scope = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 creds = Credentials.from_service_account_info(
     st.secrets["gcp_service_account"],
-    scopes=SCOPE
+    scopes=scope,
 )
+service = build("sheets", "v4", credentials=creds)
 
-service = build('sheets', 'v4', credentials=creds)
-sheet = service.spreadsheets()
+# ID de la planilla de Google Sheets
+SPREADSHEET_ID = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 
-# Función para leer datos desde Google Sheets
-@st.cache_data(ttl=300)
-def cargar_datos(nombre_hoja):
-    result = sheet.values().get(spreadsheetId=SPREADSHEET_ID,
-                                range=nombre_hoja).execute()
-    values = result.get('values', [])
+# Función para leer datos de una hoja
+def leer_hoja(nombre_hoja):
+    sheet = service.spreadsheets()
+    result = (
+        sheet.values()
+        .get(spreadsheetId=SPREADSHEET_ID, range=nombre_hoja)
+        .execute()
+    )
+    values = result.get("values", [])
     if not values:
         return pd.DataFrame()
     df = pd.DataFrame(values[1:], columns=values[0])
     return df
 
-# Función para convertir columnas numéricas
-def convertir_monto(valor):
-    try:
-        return float(valor)
-    except:
-        return 0.0
+# --- Carga datos ---
+df_repuestos = leer_hoja("Movimientos Repuestos")
+df_petroleo = leer_hoja("Movimientos Petróleo")
 
-# Cargar datos de las 4 hojas
-mov_repuestos = cargar_datos('Movimientos Repuestos')
-res_repuestos = cargar_datos('Resumen Repuestos')
-mov_petroleo = cargar_datos('Movimientos Petróleo')
-res_petroleo = cargar_datos('Resumen Petróleo')
-
-# Convertir columnas 'Monto' y 'Total Gastado' a float en resumen
-for df in [res_repuestos, res_petroleo]:
-    for col in ['Monto', 'Total Gastado', 'Saldo Actual']:
+# Conversión de columnas numéricas
+for df in [df_repuestos, df_petroleo]:
+    for col in ["Monto"]:
         if col in df.columns:
-            df[col] = df[col].apply(convertir_monto)
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# Panel lateral: filtros
-st.sidebar.header("Filtros")
+# --- Filtros panel lateral ---
+st.sidebar.title("Filtros")
 
-# Cuatrimestres disponibles (de ambas hojas de resumen)
-cuatrimestres_repuestos = res_repuestos['Cuatrimestre'].unique() if not res_repuestos.empty else []
-cuatrimestres_petroleo = res_petroleo['Cuatrimestre'].unique() if not res_petroleo.empty else []
-cuatrimestres = sorted(set(cuatrimestres_repuestos).union(set(cuatrimestres_petroleo)))
+# Cuatrimestres disponibles
+cuatrimestres = sorted(df_repuestos["Cuatrimestre"].unique()) if "Cuatrimestre" in df_repuestos.columns else []
+cuatrimestre_seleccionado = st.sidebar.selectbox("Cuatrimestre", ["Todos"] + cuatrimestres)
 
-cuatrimestre_seleccionado = st.sidebar.selectbox("Selecciona Cuatrimestre", options=['Todos'] + list(cuatrimestres))
+# Proveedores disponibles (combinados)
+proveedores_repuestos = df_repuestos["Proveedor"].unique() if "Proveedor" in df_repuestos.columns else []
+proveedores_petroleo = df_petroleo["Proveedor"].unique() if "Proveedor" in df_petroleo.columns else []
+proveedores = sorted(set(proveedores_repuestos) | set(proveedores_petroleo))
+proveedor_seleccionado = st.sidebar.selectbox("Proveedor", ["Todos"] + list(proveedores))
 
-# Proveedores disponibles (de movimientos)
-proveedores_repuestos = mov_repuestos['Proveedor'].unique() if not mov_repuestos.empty else []
-proveedores_petroleo = mov_petroleo['Proveedor'].unique() if not mov_petroleo.empty else []
-proveedores = sorted(set(proveedores_repuestos).union(set(proveedores_petroleo)))
+# --- Función para filtrar datos ---
+def aplicar_filtros(df):
+    if "Cuatrimestre" in df.columns and cuatrimestre_seleccionado != "Todos":
+        df = df[df["Cuatrimestre"] == cuatrimestre_seleccionado]
+    if "Proveedor" in df.columns and proveedor_seleccionado != "Todos":
+        df = df[df["Proveedor"] == proveedor_seleccionado]
+    return df
 
-proveedor_seleccionado = st.sidebar.selectbox("Selecciona Proveedor", options=['Todos'] + list(proveedores))
+df_repuestos_filtrado = aplicar_filtros(df_repuestos)
+df_petroleo_filtrado = aplicar_filtros(df_petroleo)
 
-# Filtrar datos según selección
-def filtrar_df(df):
-    if df.empty:
-        return df
-    dff = df.copy()
-    if cuatrimestre_seleccionado != 'Todos' and 'Cuatrimestre' in dff.columns:
-        dff = dff[dff['Cuatrimestre'] == cuatrimestre_seleccionado]
-    if proveedor_seleccionado != 'Todos' and 'Proveedor' in dff.columns:
-        dff = dff[dff['Proveedor'] == proveedor_seleccionado]
-    return dff
-
-mov_repuestos_filtrado = filtrar_df(mov_repuestos)
-mov_petroleo_filtrado = filtrar_df(mov_petroleo)
-
-# Mostrar resumen en columnas
+# --- Mostrar métricas ---
 st.title("Control de Caja Chica - Resumen")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("Repuestos")
-    if not res_repuestos.empty:
-        resumen_repuestos_filtrado = filtrar_df(res_repuestos)
-        st.dataframe(resumen_repuestos_filtrado)
-    else:
-        st.write("No hay datos de repuestos.")
+    st.header("Repuestos")
+    total_repuestos = df_repuestos_filtrado["Monto"].sum()
+    st.metric("Total Gastado", f"${total_repuestos:,.2f}")
 
 with col2:
-    st.subheader("Petróleo")
-    if not res_petroleo.empty:
-        resumen_petroleo_filtrado = filtrar_df(res_petroleo)
-        st.dataframe(resumen_petroleo_filtrado)
-    else:
-        st.write("No hay datos de petróleo.")
+    st.header("Petróleo")
+    total_petroleo = df_petroleo_filtrado["Monto"].sum()
+    st.metric("Total Gastado", f"${total_petroleo:,.2f}")
 
-# Mostrar movimientos filtrados en tablas plegables
-st.subheader("Movimientos Repuestos filtrados")
-st.dataframe(mov_repuestos_filtrado)
+# --- Mostrar tablas ---
+st.subheader("Movimientos Repuestos")
+st.dataframe(df_repuestos_filtrado)
 
-st.subheader("Movimientos Petróleo filtrados")
-st.dataframe(mov_petroleo_filtrado)
+st.subheader("Movimientos Petróleo")
+st.dataframe(df_petroleo_filtrado)
 
-# Chat IA con Huggingface para consultas
-st.sidebar.header("Consulta IA")
+# --- Chat IA simple con Huggingface (ejemplo) ---
+st.subheader("Consulta con IA")
+user_input = st.text_input("Pregunta sobre las cajas chicas")
 
-def consultar_huggingface(prompt):
-    API_URL = "https://api-inference.huggingface.co/models/gpt2"
+if user_input:
+    API_URL = "https://api-inference.huggingface.co/models/bigscience/bloom"
     headers = {"Authorization": f"Bearer {st.secrets['huggingface_api_token']}"}
-    payload = {"inputs": prompt}
-    try:
-        response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status()
-        result = response.json()
-        # El resultado puede ser una lista con texto generado en 'generated_text'
-        if isinstance(result, list) and 'generated_text' in result[0]:
-            return result[0]['generated_text']
+    payload = {"inputs": user_input}
+    response = requests.post(API_URL, headers=headers, json=payload)
+    if response.status_code == 200:
+        respuesta = response.json()
+        if isinstance(respuesta, list) and "generated_text" in respuesta[0]:
+            st.write(respuesta[0]["generated_text"])
         else:
-            return str(result)
-    except Exception as e:
-        return f"Error en consulta IA: {e}"
-
-prompt_usuario = st.sidebar.text_area("Escribe tu consulta aquí:")
-
-if st.sidebar.button("Consultar IA"):
-    if prompt_usuario.strip():
-        with st.spinner("Consultando IA..."):
-            respuesta_ia = consultar_huggingface(prompt_usuario)
-            st.sidebar.write("Respuesta IA:")
-            st.sidebar.info(respuesta_ia)
+            st.write("No se pudo obtener una respuesta clara.")
     else:
-        st.sidebar.warning("Por favor ingresa una consulta.")
+        st.write(f"Error en la API: {response.status_code}")
 
