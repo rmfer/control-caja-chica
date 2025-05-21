@@ -4,7 +4,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 # --- Configuración ---
-SPREADSHEET_ID = "tu_id_de_planilla_aqui"  # <-- Pon tu ID real
+SPREADSHEET_ID = "1O-YsM0Aksfl9_JmbAmYUGnj1iunxU9WOXwWPR8E6Yro"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 @st.cache_data(show_spinner=False)
